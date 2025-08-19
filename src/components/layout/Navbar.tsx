@@ -17,7 +17,7 @@ const Navbar: React.FC = () => {
   const t = useTranslations('navigation');
 
   // Empty navigation items - add your own
-  const navItems = [
+  const navItems: { label: string; path: string }[] = [
     // Example: { label: t('home'), path: "/" },
     // Example: { label: t('about'), path: "/about" },
     // Example: { label: t('contact'), path: "/contact" },

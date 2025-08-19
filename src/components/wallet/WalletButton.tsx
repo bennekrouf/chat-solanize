@@ -2,22 +2,17 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { PublicKey } from '@solana/web3.js';
+// import { PublicKey } from '@solana/web3.js';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/hooks/useAuth';
 
-// Import correct Feather icons - no FiWallet exists
 import { 
-  FiCreditCard,  // Use this for wallet icon
-  FiLogOut, 
-  FiCopy, 
-  FiCheck 
+  FiCreditCard,
 } from 'react-icons/fi';
 
 const WalletButton: React.FC = () => {
   const { 
     connect, 
-    disconnect, 
     connecting, 
     connected, 
     publicKey,
@@ -29,54 +24,39 @@ const WalletButton: React.FC = () => {
   const { 
     isAuthenticated, 
     loading: authLoading, 
-    error: authError, 
     authenticate 
   } = useAuth();
   
   const [showWalletModal, setShowWalletModal] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [showDropdown, setShowDropdown] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Handle wallet selection and connection
-  const handleWalletSelect = useCallback(async (walletName: string) => {
-    try {
-      console.log('Selecting wallet:', walletName);
-      console.log('Available wallets:', wallets.map(w => w.adapter.name));
-      
-      setShowWalletModal(false);
-      
-      // Find the wallet adapter
-      const selectedWallet = wallets.find(w => w.adapter.name === walletName);
-      if (!selectedWallet) {
-        console.error('Wallet not found:', walletName);
-        return;
-      }
-
-      console.log('Found wallet:', selectedWallet.adapter.name);
-      console.log('Wallet ready state:', selectedWallet.readyState);
-
-      // Select the wallet
-      select(selectedWallet.adapter.name);
-      console.log('Wallet selected');
-
-      // Connect to wallet
-      await connect();
-      console.log('Wallet connected');
-
-      // Authenticate with backend
-      console.log('Starting authentication...');
-      await authenticate();
-      console.log('Authentication completed');
-      
-    } catch (error) {
-      console.error('Failed to connect and authenticate:', error);
+  // Replace the handleWalletSelect function:
+const handleWalletSelect = useCallback(async (walletName: string) => {
+  try {
+    console.log('Selecting wallet:', walletName);
+    setShowWalletModal(false);
+    
+    // Find and select the wallet adapter
+    const selectedWallet = wallets.find(w => w.adapter.name === walletName);
+    if (!selectedWallet) {
+      console.error('Wallet not found:', walletName);
+      return;
     }
-  }, [wallets, select, connect, authenticate]);
+
+    select(selectedWallet.adapter.name);
+    await connect();
+    console.log('Wallet connected successfully');
+    
+    // Don't auto-authenticate - user will click authenticate button
+    
+  } catch (error) {
+    console.error('Failed to connect wallet:', error);
+  }
+}, [wallets, select, connect]); // Remove authenticate from dependencies
 
   // Manual connect function
   const handleManualConnect = useCallback(async () => {
@@ -96,21 +76,6 @@ const WalletButton: React.FC = () => {
       console.error('Failed to connect and authenticate:', error);
     }
   }, [wallet, connect, authenticate]);
-
-  // Copy wallet address
-  const copyAddress = useCallback(async () => {
-    if (publicKey) {
-      await navigator.clipboard.writeText(publicKey.toBase58());
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  }, [publicKey]);
-
-  // Format wallet address for display
-  const formatAddress = (address: PublicKey) => {
-    const base58 = address.toBase58();
-    return `${base58.slice(0, 4)}...${base58.slice(-4)}`;
-  };
 
   // Available wallets with icons
   const supportedWallets = [
@@ -146,58 +111,18 @@ const WalletButton: React.FC = () => {
     );
   }
 
-  if (connected && publicKey && isAuthenticated) {
-    return (
-      <div className="relative">
-        <button
-          onClick={() => setShowDropdown(!showDropdown)}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-        >
-          <FiCreditCard className="h-4 w-4" />
-          <span className="hidden sm:inline font-mono text-sm">
-            {formatAddress(publicKey)}
-          </span>
-          <span className="sm:hidden">Connected</span>
-        </button>
-
-        {showDropdown && (
-          <div className="absolute right-0 mt-2 w-64 bg-background border border-border rounded-lg shadow-lg py-2 z-50">
-            <div className="px-4 py-2 border-b border-border">
-              <p className="text-sm font-medium text-foreground">Connected Wallet</p>
-              <p className="text-xs text-muted-foreground font-mono">
-                {publicKey.toBase58()}
-              </p>
-            </div>
-            
-            <button
-              onClick={copyAddress}
-              className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-secondary transition-colors"
-            >
-              {copied ? (
-                <>
-                  <FiCheck className="h-4 w-4 text-green-500" />
-                  <span>Copied!</span>
-                </>
-              ) : (
-                <>
-                  <FiCopy className="h-4 w-4" />
-                  <span>Copy Address</span>
-                </>
-              )}
-            </button>
-
-            <button
-              onClick={disconnect}
-              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-destructive hover:bg-secondary transition-colors"
-            >
-              <FiLogOut className="h-4 w-4" />
-              <span>Disconnect</span>
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }
+  if (connected && publicKey && !isAuthenticated) {
+  return (
+    <button
+      onClick={authenticate}
+      disabled={authLoading}
+      className="flex items-center gap-2 px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors text-sm font-medium disabled:opacity-50"
+    >
+      <FiCreditCard className="h-4 w-4" />
+      {authLoading ? 'Signing...' : 'Sign to Authenticate'}
+    </button>
+  );
+}
 
   return (
     <>

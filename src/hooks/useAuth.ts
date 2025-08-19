@@ -26,10 +26,14 @@ export const useAuth = () => {
     loading: false,
     error: null,
   });
+  
+  // Add authentication guard
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   // Clear auth when wallet disconnects
   useEffect(() => {
     if (!connected || !publicKey) {
+      console.log('Wallet disconnected, clearing auth');
       setAuthState({
         isAuthenticated: false,
         token: null,
@@ -41,24 +45,32 @@ export const useAuth = () => {
     }
   }, [connected, publicKey]);
 
-  // Check for existing token on mount
+  // Check for existing token on mount and wallet connection
   useEffect(() => {
-    const token = localStorage.getItem('auth_token');
-    if (token && publicKey) {
-      setAuthState(prev => ({
-        ...prev,
-        isAuthenticated: true,
-        token,
-        user: {
-          wallet_address: publicKey.toBase58(),
-          id: 'current_user', // Will be replaced with actual user ID from backend
-        },
-      }));
-    }
-  }, [publicKey]);
+    const checkExistingAuth = () => {
+      const token = localStorage.getItem('auth_token');
+      console.log('Checking existing auth:', { token: !!token, publicKey: !!publicKey, connected });
+      
+      if (token && publicKey && connected) {
+        console.log('Found existing token, setting authenticated state');
+        setAuthState(prev => ({
+          ...prev,
+          isAuthenticated: true,
+          token,
+          user: {
+            wallet_address: publicKey.toBase58(),
+            id: 'current_user',
+          },
+        }));
+      }
+    };
+
+    checkExistingAuth();
+  }, [publicKey, connected]);
 
   // Get challenge from backend
   const getChallenge = async (walletAddress: string): Promise<string> => {
+    console.log('Getting challenge for wallet:', walletAddress);
     const response = await fetch(`${API_BASE_URL}/api/v1/auth/challenge/${walletAddress}`, {
       method: 'POST',
       headers: {
@@ -67,11 +79,14 @@ export const useAuth = () => {
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Challenge request failed:', errorText);
       throw new Error(`Failed to get challenge: ${response.statusText}`);
     }
 
     const data = await response.json();
-    return data.challenge || data.message; // Adjust based on your backend response
+    console.log('Challenge response:', data);
+    return data.challenge || data.message;
   };
 
   // Verify signature with backend
@@ -80,13 +95,13 @@ export const useAuth = () => {
     signature: Uint8Array,
     challenge: string
   ): Promise<{ jwt: string; user: { id: string; wallet_address: string } }> => {
-    // Convert signature to Base58 as expected by backend
     const signatureBase58 = bs58.encode(signature);
     
-    console.log('Sending verification request:');
-    console.log('Wallet:', walletAddress);
-    console.log('Challenge:', challenge);
-    console.log('Signature (Base58):', signatureBase58);
+    console.log('Verifying signature:', {
+      wallet: walletAddress,
+      challenge,
+      signature: signatureBase58
+    });
     
     const response = await fetch(`${API_BASE_URL}/api/v1/auth/verify`, {
       method: 'POST',
@@ -96,39 +111,63 @@ export const useAuth = () => {
       body: JSON.stringify({
         wallet_address: walletAddress,
         signature: signatureBase58,
-        challenge: challenge, // Use 'challenge' not 'message'
+        challenge: challenge,
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Backend error:', errorText);
+      console.error('Verification failed:', {
+        status: response.status,
+        statusText: response.statusText,
+        body: errorText
+      });
       throw new Error(`Authentication failed: ${response.statusText}`);
     }
 
-    return response.json();
+    const result = await response.json();
+    console.log('Verification successful:', result);
+    return result;
   };
 
   // Main authentication function
   const authenticate = useCallback(async () => {
     if (!publicKey || !signMessage) {
-      throw new Error('Wallet not connected');
+      const error = 'Wallet not connected';
+      console.error(error);
+      setAuthState(prev => ({ ...prev, error }));
+      throw new Error(error);
     }
 
+    // Prevent concurrent authentication attempts
+    if (isAuthenticating) {
+      console.log('Authentication already in progress, skipping...');
+      return;
+    }
+
+    console.log('Starting authentication process...');
+    setIsAuthenticating(true);
     setAuthState(prev => ({ ...prev, loading: true, error: null }));
 
     try {
       const walletAddress = publicKey.toBase58();
+      console.log('Wallet address:', walletAddress);
       
       // Step 1: Get challenge from backend
+      console.log('Step 1: Getting challenge...');
       const challenge = await getChallenge(walletAddress);
+      console.log('Received challenge:', challenge);
       
       // Step 2: Sign the challenge
+      console.log('Step 2: Signing challenge...');
       const messageBytes = new TextEncoder().encode(challenge);
       const signature = await signMessage(messageBytes);
+      console.log('Message signed successfully');
       
       // Step 3: Verify signature with backend
+      console.log('Step 3: Verifying signature...');
       const { jwt, user } = await verifySignature(walletAddress, signature, challenge);
+      console.log('Authentication successful!');
       
       // Step 4: Store token and update state
       localStorage.setItem('auth_token', jwt);
@@ -136,9 +175,9 @@ export const useAuth = () => {
         isAuthenticated: true,
         token: jwt,
         user: {
+         ...user,
           wallet_address: walletAddress,
           id: user.id || 'current_user',
-          ...user,
         },
         loading: false,
         error: null,
@@ -147,17 +186,24 @@ export const useAuth = () => {
       return { success: true, token: jwt };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Authentication failed';
+      console.error('Authentication error:', error);
       setAuthState(prev => ({
         ...prev,
         loading: false,
         error: errorMessage,
+        isAuthenticated: false,
+        token: null,
+        user: null,
       }));
       throw error;
+    } finally {
+      setIsAuthenticating(false);
     }
-  }, [publicKey, signMessage]);
+  }, [publicKey, signMessage, isAuthenticating]);
 
   // Logout function
   const logout = useCallback(() => {
+    console.log('Logging out...');
     localStorage.removeItem('auth_token');
     setAuthState({
       isAuthenticated: false,
@@ -172,6 +218,12 @@ export const useAuth = () => {
   const apiCall = useCallback(async (endpoint: string, options: RequestInit = {}) => {
     const token = authState.token || localStorage.getItem('auth_token');
     
+    console.log('Making API call:', {
+      endpoint,
+      hasToken: !!token,
+      method: options.method || 'GET'
+    });
+    
     const headers = {
       'Content-Type': 'application/json',
       ...(token && { Authorization: `Bearer ${token}` }),
@@ -183,8 +235,14 @@ export const useAuth = () => {
       headers,
     });
 
+    console.log('API response:', {
+      endpoint,
+      status: response.status,
+      ok: response.ok
+    });
+
     if (response.status === 401) {
-      // Token expired or invalid
+      console.log('API call returned 401, logging out');
       logout();
       throw new Error('Authentication required');
     }
@@ -192,10 +250,27 @@ export const useAuth = () => {
     return response;
   }, [authState.token, logout]);
 
+  // Test backend connection
+  const testConnection = useCallback(async () => {
+    try {
+      console.log('Testing backend connection...');
+      const response = await fetch(`${API_BASE_URL}/api/v1/chat/health`);
+      console.log('Backend health check:', {
+        status: response.status,
+        ok: response.ok
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('Backend connection test failed:', error);
+      return false;
+    }
+  }, []);
+
   return {
     ...authState,
     authenticate,
     logout,
     apiCall,
+    testConnection,
   };
 };
