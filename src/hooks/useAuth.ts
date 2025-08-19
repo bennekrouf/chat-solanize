@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
+import bs58 from 'bs58';
 
 const API_BASE_URL = 'http://127.0.0.1:8000';
 
@@ -77,8 +78,16 @@ export const useAuth = () => {
   const verifySignature = async (
     walletAddress: string,
     signature: Uint8Array,
-    message: string
-  ): Promise<{ token: string; user: { id: string; wallet_address: string } }> => {
+    challenge: string
+  ): Promise<{ jwt: string; user: { id: string; wallet_address: string } }> => {
+    // Convert signature to Base58 as expected by backend
+    const signatureBase58 = bs58.encode(signature);
+    
+    console.log('Sending verification request:');
+    console.log('Wallet:', walletAddress);
+    console.log('Challenge:', challenge);
+    console.log('Signature (Base58):', signatureBase58);
+    
     const response = await fetch(`${API_BASE_URL}/api/v1/auth/verify`, {
       method: 'POST',
       headers: {
@@ -86,12 +95,14 @@ export const useAuth = () => {
       },
       body: JSON.stringify({
         wallet_address: walletAddress,
-        signature: Array.from(signature), // Convert Uint8Array to regular array
-        message,
+        signature: signatureBase58,
+        challenge: challenge, // Use 'challenge' not 'message'
       }),
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Backend error:', errorText);
       throw new Error(`Authentication failed: ${response.statusText}`);
     }
 
@@ -117,13 +128,13 @@ export const useAuth = () => {
       const signature = await signMessage(messageBytes);
       
       // Step 3: Verify signature with backend
-      const { token, user } = await verifySignature(walletAddress, signature, challenge);
+      const { jwt, user } = await verifySignature(walletAddress, signature, challenge);
       
       // Step 4: Store token and update state
-      localStorage.setItem('auth_token', token);
+      localStorage.setItem('auth_token', jwt);
       setAuthState({
         isAuthenticated: true,
-        token,
+        token: jwt,
         user: {
           wallet_address: walletAddress,
           id: user.id || 'current_user',
@@ -133,7 +144,7 @@ export const useAuth = () => {
         error: null,
       });
 
-      return { success: true, token };
+      return { success: true, token: jwt };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Authentication failed';
       setAuthState(prev => ({
