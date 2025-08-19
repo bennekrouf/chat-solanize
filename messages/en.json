@@ -1,0 +1,15 @@
+{
+  "metadata": {
+    "site_title": "MyApp",
+    "site_description": "Your app description"
+  },
+  "navigation": {
+    "home": "Home",
+    "about": "About",
+    "contact": "Contact"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Error"
+  }
+}

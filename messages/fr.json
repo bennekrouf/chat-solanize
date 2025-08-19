@@ -1,0 +1,15 @@
+{
+  "metadata": {
+    "site_title": "MonApp",
+    "site_description": "Description de votre app"
+  },
+  "navigation": {
+    "home": "Accueil",
+    "about": "À propos",
+    "contact": "Contact"
+  },
+  "common": {
+    "loading": "Chargement...",
+    "error": "Erreur"
+  }
+}
