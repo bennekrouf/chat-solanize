@@ -1,35 +1,52 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+// src/contexts/AuthContext.tsx
+'use client';
+
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import bs58 from 'bs58';
 
 const API_BASE_URL = 'http://127.0.0.1:5000';
 
-type AuthState = 'disconnected' | 'connected' | 'authenticating' | 'authenticated' | 'error';
+interface AuthContextType {
+  isAuthenticated: boolean;
+  isAuthenticating: boolean;
+  error: string | null;
+  authenticate: () => Promise<boolean>;
+  logout: () => void;
+  apiCall: (endpoint: string, options?: RequestInit) => Promise<Response>;
+}
 
-export const useAuth = () => {
+const AuthContext = createContext<AuthContextType | null>(null);
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const wallet = useWallet();
-  const [authState, setAuthState] = useState<AuthState>('disconnected');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const isAuthenticatingRef = useRef(false);
 
-  // Simple state management - only track connection
+  // Check for existing token on mount
   useEffect(() => {
-    if (!wallet.connected) {
-      setAuthState('disconnected');
-      setError(null);
-      isAuthenticatingRef.current = false;
-    } else if (wallet.connected) {
-      setAuthState('connected');
+    const token = localStorage.getItem('auth_token');
+    if (token && wallet.connected) {
+      setIsAuthenticated(true);
     }
   }, [wallet.connected]);
 
-  const authenticate = useCallback(async () => {
-    if (!wallet.publicKey || !wallet.signMessage || isAuthenticatingRef.current) {
+  // Reset auth when wallet disconnects
+  useEffect(() => {
+    if (!wallet.connected) {
+      setIsAuthenticated(false);
+      setError(null);
+      localStorage.removeItem('auth_token');
+    }
+  }, [wallet.connected]);
+
+  const authenticate = useCallback(async (): Promise<boolean> => {
+    if (!wallet.publicKey || !wallet.signMessage || isAuthenticating) {
       return false;
     }
 
-    isAuthenticatingRef.current = true;
-    setAuthState('authenticating');
+    setIsAuthenticating(true);
     setError(null);
 
     try {
@@ -62,24 +79,24 @@ export const useAuth = () => {
       if (!verifyResponse.ok) throw new Error('Authentication failed');
       const { jwt } = await verifyResponse.json();
       
-      // Store token and mark as authenticated
       localStorage.setItem('auth_token', jwt);
-      setAuthState('authenticated');
+      setIsAuthenticated(true);
       return true;
       
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Authentication failed';
       setError(errorMsg);
-      setAuthState('error');
       return false;
     } finally {
-      isAuthenticatingRef.current = false;
+      setIsAuthenticating(false);
     }
-  }, [wallet.publicKey, wallet.signMessage]);
+  }, [wallet.publicKey, wallet.signMessage, isAuthenticating]);
 
-  const retry = useCallback(() => {
-    authenticate();
-  }, [authenticate]);
+  const logout = useCallback(() => {
+    localStorage.removeItem('auth_token');
+    setIsAuthenticated(false);
+    setError(null);
+  }, []);
 
   const apiCall = useCallback(async (endpoint: string, options: RequestInit = {}) => {
     const token = localStorage.getItem('auth_token');
@@ -93,29 +110,30 @@ export const useAuth = () => {
     
     if (response.status === 401) {
       localStorage.removeItem('auth_token');
-      if (wallet.connected) {
-        setAuthState('connected');
-      }
+      setIsAuthenticated(false);
     }
     
     return response;
-  }, [wallet.connected]);
+  }, []);
 
-  return {
-    // Wallet state
-    ...wallet,
-    
-    // Auth state
-    isAuthenticated: authState === 'authenticated',
-    isAuthenticating: authState === 'authenticating',
-    needsAuth: authState === 'connected',
-    hasError: authState === 'error',
-    
-    // Actions
-    authenticate,
-    error,
-    retry,
-    apiCall,
-    authState,
-  };
+  return (
+    <AuthContext.Provider value={{
+      isAuthenticated,
+      isAuthenticating,
+      error,
+      authenticate,
+      logout,
+      apiCall,
+    }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 };

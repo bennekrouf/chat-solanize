@@ -5,7 +5,7 @@ import { FiSend, FiMenu, FiX, FiMessageCircle, FiPlus, FiTrash2, FiMoon, FiSun, 
 import { useTheme } from 'next-themes';
 import WalletButton from '@/components/wallet/WalletButton';
 import { useChat } from '@/hooks/useChat';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth } from '@/contexts/AuthContext';
 
 const ChatInterface: React.FC = () => {
   const [currentInput, setCurrentInput] = useState('');
@@ -13,6 +13,8 @@ const ChatInterface: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  console.log('ChatInterface auth state:', { isAuthenticated });
 
   const {
     sessions,

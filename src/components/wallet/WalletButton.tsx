@@ -2,30 +2,13 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { useAuth } from '@/hooks/useAuth';
-
-import { 
-  FiCreditCard,
-} from 'react-icons/fi';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { FiCreditCard } from 'react-icons/fi';
 
 const WalletButton: React.FC = () => {
-  // Use only the unified useAuth hook
-  const { 
-    connect, 
-    connected, 
-    publicKey, 
-    wallets, 
-    select, 
-    wallet, 
-    connecting,
-    isAuthenticated,
-    isAuthenticating,
-    needsAuth,
-    hasError,
-    retry
-  } = useAuth();
-
-  // All hooks must be called at the top level
+  const wallet = useWallet();
+  const { isAuthenticated, isAuthenticating, authenticate } = useAuth();
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -35,58 +18,38 @@ const WalletButton: React.FC = () => {
 
   const handleWalletSelect = useCallback(async (walletName: string) => {
     try {
-      console.log('Selecting wallet:', walletName);
       setShowWalletModal(false);
       
-      // Find and select the wallet adapter
-      const selectedWallet = wallets.find(w => w.adapter.name === walletName);
+      const selectedWallet = wallet.wallets.find(w => w.adapter.name === walletName);
       if (!selectedWallet) {
         console.error('Wallet not found:', walletName);
         return;
       }
 
-      select(selectedWallet.adapter.name);
-      await connect();
-      console.log('Wallet connected successfully');
+      wallet.select(selectedWallet.adapter.name);
+      await wallet.connect();
+      
+      // Authenticate after connection
+      setTimeout(async () => {
+        await authenticate();
+      }, 500);
       
     } catch (error) {
       console.error('Failed to connect wallet:', error);
     }
-  }, [wallets, select, connect]);
+  }, [wallet, authenticate]);
 
-  const handleManualConnect = useCallback(async () => {
-    try {
-      if (!wallet) {
-        setShowWalletModal(true);
-        return;
-      }
-      
-      console.log('Manual connect attempt...');
-      await connect();
-      console.log('Wallet connected successfully');
-      
-    } catch (error) {
-      console.error('Failed to connect wallet:', error);
-    }
-  }, [wallet, connect]);
-
-  // Available wallets with icons
-  const supportedWallets = [
-    { name: 'Phantom', icon: '👻' },
-    { name: 'Solflare', icon: '🔥' },
-  ];
-
-  // Connected and authenticated - show address
-  if (isAuthenticated && publicKey) {
+  // Show address when authenticated
+  if (isAuthenticated && wallet.publicKey) {
     return (
       <div className="flex items-center gap-2 px-4 py-2 bg-secondary rounded-lg">
         <FiCreditCard className="h-4 w-4" />
-        <span className="text-sm">{publicKey.toBase58().slice(0,4)}...{publicKey.toBase58().slice(-4)}</span>
+        <span className="text-sm">{wallet.publicKey.toBase58().slice(0,4)}...{wallet.publicKey.toBase58().slice(-4)}</span>
       </div>
     );
   }
 
-  // Connected but authenticating
+  // Show signing state
   if (isAuthenticating) {
     return (
       <button disabled className="flex items-center gap-2 px-4 py-2 bg-yellow-500 text-white rounded-lg">
@@ -96,41 +59,19 @@ const WalletButton: React.FC = () => {
     );
   }
 
-  // Connected but auth failed
-  if (hasError) {
-    return (
-      <button onClick={retry} className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
-        <FiCreditCard className="h-4 w-4" />
-        Retry Auth
-      </button>
-    );
-  }
-
-  // If wallet is selected but not connected, show connect button
-  if (wallet && !connected && !connecting) {
-    return (
-      <button
-        onClick={handleManualConnect}
-        className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium"
-      >
-        <FiCreditCard className="h-4 w-4" />
-        Connect {wallet.adapter.name}
-      </button>
-    );
-  }
-
+  // Show connect button
   return (
     <>
       <button
         onClick={() => setShowWalletModal(true)}
-        disabled={connecting}
+        disabled={wallet.connecting}
         className="flex items-center gap-2 px-4 py-2 bg-secondary hover:bg-secondary/80 rounded-lg transition-colors text-sm font-medium disabled:opacity-50"
       >
         <FiCreditCard className="h-4 w-4" />
-        {connecting ? 'Connecting...' : 'Connect Wallet'}
+        {wallet.connecting ? 'Connecting...' : 'Connect Wallet'}
       </button>
 
-      {/* Wallet Selection Modal */}
+      {/* Wallet modal - same as before */}
       {showWalletModal && mounted && createPortal(
         <div 
           className="fixed inset-0 bg-black/50 flex items-center justify-center p-4"
@@ -142,20 +83,16 @@ const WalletButton: React.FC = () => {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-foreground">
-                Connect Wallet
-              </h3>
-              <button
-                onClick={() => setShowWalletModal(false)}
-                className="p-1 rounded hover:bg-secondary transition-colors"
-              >
-                ✕
-              </button>
+              <h3 className="text-lg font-semibold text-foreground">Connect Wallet</h3>
+              <button onClick={() => setShowWalletModal(false)}>✕</button>
             </div>
 
             <div className="space-y-3">
-              {supportedWallets.map((walletInfo) => {
-                const walletAdapter = wallets.find(w => w.adapter.name === walletInfo.name);
+              {[
+                { name: 'Phantom', icon: '👻' },
+                { name: 'Solflare', icon: '🔥' },
+              ].map((walletInfo) => {
+                const walletAdapter = wallet.wallets.find(w => w.adapter.name === walletInfo.name);
                 const isInstalled = walletAdapter?.readyState === 'Installed';
                 
                 return (
@@ -163,7 +100,7 @@ const WalletButton: React.FC = () => {
                     key={walletInfo.name}
                     onClick={() => handleWalletSelect(walletInfo.name)}
                     disabled={!isInstalled}
-                    className="w-full flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-secondary transition-colors disabled:opacity-50"
                   >
                     <span className="text-2xl">{walletInfo.icon}</span>
                     <div className="flex-1 text-left">
@@ -176,10 +113,6 @@ const WalletButton: React.FC = () => {
                 );
               })}
             </div>
-
-            <p className="text-xs text-muted-foreground mt-4 text-center">
-              Don't have a wallet? Download Phantom or Solflare to get started.
-            </p>
           </div>
         </div>,
         document.body

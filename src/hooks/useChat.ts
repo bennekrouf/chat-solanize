@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { ChatApi, ChatApiError, type ChatSession, type ChatMessage } from '@/lib/chatApi';
-import { useAuth } from './useAuth';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface ChatError {
   message: string;
@@ -39,6 +39,8 @@ export const useChat = () => {
     },
     error: null,
   });
+
+  console.log('useChat auth state:', { isAuthenticated });
 
   const setLoading = useCallback((key: keyof UseChatState['loading'], value: boolean) => {
     setState(prev => ({
