@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
-import { useAuth } from './useAuth';
+import { useWallet } from '@solana/wallet-adapter-react';
 import { ChatApi, ChatApiError, type ChatSession, type ChatMessage } from '@/lib/chatApi';
+import { useAuth } from './useAuth';
 
 export interface ChatError {
   message: string;
@@ -12,6 +13,7 @@ export interface UseChatState {
   sessions: ChatSession[];
   currentSession: string | null;
   messages: Record<string, ChatMessage[]>;
+  optimisticMessages: Record<string, ChatMessage[]>;
   loading: {
     sessions: boolean;
     messages: boolean;
@@ -24,11 +26,11 @@ export interface UseChatState {
 export const useChat = () => {
   const { apiCall, isAuthenticated } = useAuth();
   const chatApi = useMemo(() => new ChatApi(apiCall), [apiCall]);
-
   const [state, setState] = useState<UseChatState>({
     sessions: [],
     currentSession: null,
     messages: {},
+    optimisticMessages: {},
     loading: {
       sessions: false,
       messages: false,
@@ -144,47 +146,97 @@ export const useChat = () => {
     }
   }, [isAuthenticated, chatApi, setLoading, setError, handleApiError]);
 
-  // Send message
-  const sendMessage = useCallback(async (sessionId: string, content: string) => {
-    if (!sessionId || !content.trim()) return false;
 
-    setLoading('sending', true);
-    setError(null);
+// Send message
+const sendMessage = useCallback(async (sessionId: string, content: string) => {
+  if (!sessionId || !content.trim()) return false;
 
-    try {
-      const response = await chatApi.sendMessage(sessionId, {
-        content: content.trim(),
-        role: 'user'
-      });
+  const message = content.trim();
+  
+  // Create optimistic user message immediately
+  const optimisticUserMessage: ChatMessage = {
+    id: `temp-user-${Date.now()}`,
+    content: message,
+    role: 'user',
+    created_at: new Date().toISOString(),
+  };
 
-      // Update messages with both user message and AI response
-      setState(prev => ({
-        ...prev,
-        messages: {
-          ...prev.messages,
-          [sessionId]: [
-            ...(prev.messages[sessionId] || []),
-            response.user_message,
-            response.ai_response
-          ]
-        },
-        // Update session's updated_at timestamp
-        sessions: prev.sessions.map(session =>
-          session.id === sessionId
-            ? { ...session, updated_at: new Date().toISOString() }
-            : session
-        )
-      }));
-
-      return true;
-    } catch (error) {
-      const chatError = handleApiError(error, 'send message', () => sendMessage(sessionId, content));
-      setError(chatError);
-      return false;
-    } finally {
-      setLoading('sending', false);
+  // Add optimistic user message to state immediately
+  setState(prev => ({
+    ...prev,
+    optimisticMessages: {
+      ...prev.optimisticMessages,
+      [sessionId]: [...(prev.optimisticMessages[sessionId] || []), optimisticUserMessage]
     }
-  }, [chatApi, setLoading, setError, handleApiError]);
+  }));
+
+  setLoading('sending', true);
+  setError(null);
+
+  try {
+    const response = await chatApi.sendMessage(sessionId, {
+      content: message,
+      role: 'user'
+    });
+
+    // Success: Add real messages to the main messages array and clear optimistic
+    setState(prev => ({
+      ...prev,
+      messages: {
+        ...prev.messages,
+        [sessionId]: [
+          ...(prev.messages[sessionId] || []),
+          // Map the backend response to our ChatMessage format
+          {
+            id: response.user_message.id,
+            content: response.user_message.content,
+            role: 'user' as const,
+            created_at: response.user_message.created_at,
+          },
+          {
+            id: response.ai_message.id,
+            content: response.ai_message.content,
+            role: 'assistant' as const,
+            created_at: response.ai_message.created_at,
+          }
+        ]
+      },
+      optimisticMessages: {
+        ...prev.optimisticMessages,
+        [sessionId]: [] // Clear optimistic messages for this session
+      },
+      sessions: prev.sessions.map(session =>
+        session.id === sessionId
+          ? { ...session, updated_at: new Date().toISOString() }
+          : session
+      )
+    }));
+
+    return true;
+  } catch (error) {
+    // Create error message as AI response
+    const errorMessage: ChatMessage = {
+      id: `temp-error-${Date.now()}`,
+      content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
+      role: 'assistant',
+      created_at: new Date().toISOString(),
+    };
+
+    // Add error message to optimistic messages
+    setState(prev => ({
+      ...prev,
+      optimisticMessages: {
+        ...prev.optimisticMessages,
+        [sessionId]: [...(prev.optimisticMessages[sessionId] || []), errorMessage]
+      }
+    }));
+
+    return false;
+  } finally {
+    setLoading('sending', false);
+  }
+}, [chatApi, setLoading, setError, handleApiError]);
+
 
   // Delete session
   const deleteSession = useCallback(async (sessionId: string) => {
@@ -233,9 +285,12 @@ export const useChat = () => {
 
   // Get current session messages
   const getCurrentMessages = useCallback(() => {
-    if (!state.currentSession) return [];
-    return state.messages[state.currentSession] || [];
-  }, [state.currentSession, state.messages]);
+  if (!state.currentSession) return [];
+  const realMessages = state.messages[state.currentSession] || [];
+  const optimisticMessages = state.optimisticMessages[state.currentSession] || [];
+  // Filter out any undefined messages
+  return [...realMessages, ...optimisticMessages].filter(message => message != null);
+}, [state.currentSession, state.messages, state.optimisticMessages]);
 
   // Get current session info
   const getCurrentSession = useCallback(() => {
@@ -249,7 +304,6 @@ export const useChat = () => {
     currentSession: state.currentSession,
     loading: state.loading,
     error: state.error,
-    isAuthenticated,
 
     // Actions
     loadSessions,

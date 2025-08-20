@@ -1,8 +1,6 @@
 'use client';
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
-// import { PublicKey } from '@solana/web3.js';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -11,22 +9,23 @@ import {
 } from 'react-icons/fi';
 
 const WalletButton: React.FC = () => {
+  // Use only the unified useAuth hook
   const { 
     connect, 
-    connecting, 
     connected, 
-    publicKey,
-    select,
-    wallets,
-    wallet
-  } = useWallet();
-
-  const { 
-    isAuthenticated, 
-    loading: authLoading, 
-    authenticate 
+    publicKey, 
+    wallets, 
+    select, 
+    wallet, 
+    connecting,
+    isAuthenticated,
+    isAuthenticating,
+    needsAuth,
+    hasError,
+    retry
   } = useAuth();
-  
+
+  // All hooks must be called at the top level
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -34,31 +33,27 @@ const WalletButton: React.FC = () => {
     setMounted(true);
   }, []);
 
-  // Replace the handleWalletSelect function:
-const handleWalletSelect = useCallback(async (walletName: string) => {
-  try {
-    console.log('Selecting wallet:', walletName);
-    setShowWalletModal(false);
-    
-    // Find and select the wallet adapter
-    const selectedWallet = wallets.find(w => w.adapter.name === walletName);
-    if (!selectedWallet) {
-      console.error('Wallet not found:', walletName);
-      return;
+  const handleWalletSelect = useCallback(async (walletName: string) => {
+    try {
+      console.log('Selecting wallet:', walletName);
+      setShowWalletModal(false);
+      
+      // Find and select the wallet adapter
+      const selectedWallet = wallets.find(w => w.adapter.name === walletName);
+      if (!selectedWallet) {
+        console.error('Wallet not found:', walletName);
+        return;
+      }
+
+      select(selectedWallet.adapter.name);
+      await connect();
+      console.log('Wallet connected successfully');
+      
+    } catch (error) {
+      console.error('Failed to connect wallet:', error);
     }
+  }, [wallets, select, connect]);
 
-    select(selectedWallet.adapter.name);
-    await connect();
-    console.log('Wallet connected successfully');
-    
-    // Don't auto-authenticate - user will click authenticate button
-    
-  } catch (error) {
-    console.error('Failed to connect wallet:', error);
-  }
-}, [wallets, select, connect]); // Remove authenticate from dependencies
-
-  // Manual connect function
   const handleManualConnect = useCallback(async () => {
     try {
       if (!wallet) {
@@ -68,14 +63,12 @@ const handleWalletSelect = useCallback(async (walletName: string) => {
       
       console.log('Manual connect attempt...');
       await connect();
-      console.log('Wallet connected, starting authentication...');
-      await authenticate();
-      console.log('Authentication completed');
+      console.log('Wallet connected successfully');
       
     } catch (error) {
-      console.error('Failed to connect and authenticate:', error);
+      console.error('Failed to connect wallet:', error);
     }
-  }, [wallet, connect, authenticate]);
+  }, [wallet, connect]);
 
   // Available wallets with icons
   const supportedWallets = [
@@ -83,56 +76,58 @@ const handleWalletSelect = useCallback(async (walletName: string) => {
     { name: 'Solflare', icon: '🔥' },
   ];
 
-  // If wallet is selected but not connected or authenticated, show connect button
+  // Connected and authenticated - show address
+  if (isAuthenticated && publicKey) {
+    return (
+      <div className="flex items-center gap-2 px-4 py-2 bg-secondary rounded-lg">
+        <FiCreditCard className="h-4 w-4" />
+        <span className="text-sm">{publicKey.toBase58().slice(0,4)}...{publicKey.toBase58().slice(-4)}</span>
+      </div>
+    );
+  }
+
+  // Connected but authenticating
+  if (isAuthenticating) {
+    return (
+      <button disabled className="flex items-center gap-2 px-4 py-2 bg-yellow-500 text-white rounded-lg">
+        <FiCreditCard className="h-4 w-4" />
+        Signing...
+      </button>
+    );
+  }
+
+  // Connected but auth failed
+  if (hasError) {
+    return (
+      <button onClick={retry} className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
+        <FiCreditCard className="h-4 w-4" />
+        Retry Auth
+      </button>
+    );
+  }
+
+  // If wallet is selected but not connected, show connect button
   if (wallet && !connected && !connecting) {
     return (
       <button
         onClick={handleManualConnect}
-        disabled={authLoading}
-        className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium disabled:opacity-50"
+        className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium"
       >
         <FiCreditCard className="h-4 w-4" />
-        {authLoading ? 'Authenticating...' : `Connect ${wallet.adapter.name}`}
+        Connect {wallet.adapter.name}
       </button>
     );
   }
-
-  // If connected but not authenticated, show authenticate button
-  if (connected && publicKey && !isAuthenticated) {
-    return (
-      <button
-        onClick={() => authenticate()}
-        disabled={authLoading}
-        className="flex items-center gap-2 px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors text-sm font-medium disabled:opacity-50"
-      >
-        <FiCreditCard className="h-4 w-4" />
-        {authLoading ? 'Authenticating...' : 'Authenticate'}
-      </button>
-    );
-  }
-
-  if (connected && publicKey && !isAuthenticated) {
-  return (
-    <button
-      onClick={authenticate}
-      disabled={authLoading}
-      className="flex items-center gap-2 px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors text-sm font-medium disabled:opacity-50"
-    >
-      <FiCreditCard className="h-4 w-4" />
-      {authLoading ? 'Signing...' : 'Sign to Authenticate'}
-    </button>
-  );
-}
 
   return (
     <>
       <button
         onClick={() => setShowWalletModal(true)}
-        disabled={connecting || authLoading}
+        disabled={connecting}
         className="flex items-center gap-2 px-4 py-2 bg-secondary hover:bg-secondary/80 rounded-lg transition-colors text-sm font-medium disabled:opacity-50"
       >
         <FiCreditCard className="h-4 w-4" />
-        {connecting ? 'Connecting...' : authLoading ? 'Authenticating...' : 'Connect Wallet'}
+        {connecting ? 'Connecting...' : 'Connect Wallet'}
       </button>
 
       {/* Wallet Selection Modal */}
@@ -160,8 +155,8 @@ const handleWalletSelect = useCallback(async (walletName: string) => {
 
             <div className="space-y-3">
               {supportedWallets.map((walletInfo) => {
-                const wallet = wallets.find(w => w.adapter.name === walletInfo.name);
-                const isInstalled = wallet?.readyState === 'Installed';
+                const walletAdapter = wallets.find(w => w.adapter.name === walletInfo.name);
+                const isInstalled = walletAdapter?.readyState === 'Installed';
                 
                 return (
                   <button

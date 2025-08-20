@@ -40,7 +40,11 @@ export const WalletContextProvider: React.FC<WalletContextProviderProps> = ({
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect>
+      <WalletProvider 
+        wallets={wallets} 
+        autoConnect={true}
+        localStorageKey="walletAdapter"
+      >
         {children}
       </WalletProvider>
     </ConnectionProvider>

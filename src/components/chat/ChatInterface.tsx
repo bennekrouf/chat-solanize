@@ -7,39 +7,10 @@ import WalletButton from '@/components/wallet/WalletButton';
 import { useChat } from '@/hooks/useChat';
 import { useAuth } from '@/hooks/useAuth';
 
-const DebugAuthState = () => {
-  const { isAuthenticated, token, user, loading, error, authenticate, testConnection } = useAuth();
-  
-  if (process.env.NODE_ENV !== 'development') return null;
-  
-  return (
-    <div className="fixed top-16 right-4 z-50 bg-black/80 text-white p-3 rounded text-xs space-y-1">
-      <div>Auth: {isAuthenticated ? '✅' : '❌'}</div>
-      <div>Token: {token ? '✅' : '❌'}</div>
-      <div>User: {user?.wallet_address?.slice(0, 8) || '❌'}</div>
-      <div>Loading: {loading ? '🔄' : '✅'}</div>
-      <div>Error: {error ? '❌ ' + error.slice(0, 20) : '✅'}</div>
-      <button 
-        onClick={authenticate}
-        className="bg-blue-500 px-2 py-1 rounded text-xs"
-        disabled={loading}
-      >
-        {loading ? 'Auth...' : 'Authenticate'}
-      </button>
-      <button 
-        onClick={testConnection}
-        className="bg-green-500 px-2 py-1 rounded text-xs"
-      >
-        Test API
-      </button>
-    </div>
-  );
-};
-
 const ChatInterface: React.FC = () => {
   const [currentInput, setCurrentInput] = useState('');
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  
+  const { isAuthenticated } = useAuth();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -48,7 +19,6 @@ const ChatInterface: React.FC = () => {
     currentSession,
     loading,
     error,
-    isAuthenticated,
     loadSessions,
     createSession,
     sendMessage,
@@ -132,7 +102,7 @@ const ChatInterface: React.FC = () => {
     <div className="flex flex-col h-screen bg-background">
       {/* Header */}
       <ChatHeader />
-      
+ 
       {/* Error Banner */}
       {error && (
         <div className="bg-destructive/10 border-b border-destructive/20 px-4 py-3">
@@ -161,8 +131,6 @@ const ChatInterface: React.FC = () => {
         </div>
       )}
 
-<DebugAuthState />
-      
       {/* Chat Container */}
       <div className="flex flex-1 overflow-hidden">
         {/* History Sidebar */}
@@ -283,45 +251,45 @@ const ChatInterface: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-6 p-4 pb-32">
-                {currentMessages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div className={`max-w-[80%] md:max-w-[70%] ${
-                      message.role === 'user'
-                        ? 'bg-primary text-primary-foreground' 
-                        : 'bg-secondary text-secondary-foreground'
-                    } rounded-2xl px-4 py-3`}>
-                      <div className="whitespace-pre-wrap break-words">
-                        {message.content}
-                      </div>
-                      <div className={`text-xs mt-2 opacity-70 ${
-                        message.role === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground'
-                      }`}>
-                        {new Date(message.created_at).toLocaleTimeString([], { 
-                          hour: '2-digit', 
-                          minute: '2-digit' 
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                
-                {/* Loading indicator */}
-                {loading.sending && (
-                  <div className="flex justify-start">
-                    <div className="bg-secondary text-secondary-foreground rounded-2xl px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-                        <span className="text-sm">Thinking...</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                <div ref={messagesEndRef} />
-              </div>
+      {currentMessages.map((message) => (
+        <div
+          key={message.id}
+          className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+        >
+          <div className={`max-w-[80%] md:max-w-[70%] ${
+            message.role === 'user'
+              ? 'bg-primary text-primary-foreground' 
+              : 'bg-secondary text-secondary-foreground'
+          } rounded-2xl px-4 py-3`}>
+            <div className="whitespace-pre-wrap break-words">
+              {message.content}
+            </div>
+            <div className={`text-xs mt-2 opacity-70 ${
+              message.role === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground'
+            }`}>
+              {new Date(message.created_at).toLocaleTimeString([], { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+              })}
+            </div>
+          </div>
+        </div>
+      ))}
+      
+      {/* Show AI thinking indicator when sending */}
+      {loading.sending && (
+        <div className="flex justify-start">
+          <div className="bg-secondary text-secondary-foreground rounded-2xl px-4 py-3">
+            <div className="flex items-center gap-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+              <span className="text-sm">AI is thinking...</span>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      <div ref={messagesEndRef} />
+    </div>
             )}
           </div>
 
