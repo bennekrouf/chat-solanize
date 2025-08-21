@@ -22,6 +22,21 @@ export interface SendMessageRequest {
 export interface SendMessageResponse {
   user_message: ChatMessage;
   ai_response: ChatMessage;
+  prepared_transaction?: {
+    type: 'transfer' | 'swap';
+    unsigned_transaction: string;
+    from: string;
+    to: string;
+    amount: number;
+    fromToken: string;
+    toToken: string;
+    toAmount?: number;
+    price?: string;
+    fees?: string;
+    slippage?: string;
+    required_signers: string[];
+    recent_blockhash: string;
+  };
 }
 
 export interface CreateSessionRequest {

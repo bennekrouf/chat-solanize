@@ -1,0 +1,29 @@
+# Site Configuration
+site:
+  name: "Solanize"
+  domain: "solanize.com"
+  description: "AI-powered Solana wallet interface with natural language transactions"
+  locale: "en"
+  
+# API Configuration
+api:
+  solana_gateway_url: "http://127.0.0.1:8080"
+  chat_api_url: "http://127.0.0.1:5000"
+  
+# Solana Configuration
+solana:
+  network: "devnet" # devnet, testnet, mainnet-beta
+  explorer_url: "https://solscan.io"
+  
+# Logging preferences (following your Rust preference)
+logging:
+  level: "trace"
+  format: "json"
+  output: "console"
+
+# Transaction Configuration
+transactions:
+  default_slippage: 1.0 # 1%
+  max_slippage: 5.0 # 5%
+  default_priority_fee: 0.000005 # SOL
+  refresh_interval: 10000 # ms
