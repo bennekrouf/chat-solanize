@@ -22,8 +22,8 @@ const Footer: React.FC = () => {
 
   return (
     <footer className="border-t border-border bg-background">
-      <div className="container py-12">
-        <div className="grid md:grid-cols-4 gap-8">
+      <div className="container py-8 md:py-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
           {/* Column 1: Logo & Description */}
           <div className="space-y-4">
             <Link href={getLocalizedPath("/")} className="flex items-center space-x-2">
@@ -35,24 +35,26 @@ const Footer: React.FC = () => {
           </div>
 
           {/* Column 2: Quick Links */}
-          <div>
-            <h3 className="font-medium text-foreground mb-4">{t('quick_links')}</h3>
-            <ul className="space-y-2">
-              {footerNav.map((item) => (
-                <li key={item.label}>
-                  <Link
-                    href={getLocalizedPath(item.path)}
-                    className="text-sm text-muted-foreground hover:text-primary transition-colors"
-                  >
-                    {item.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
+            {footerNav.length > 0 && (
+              <div>
+                <h3 className="font-medium text-foreground mb-4">{t('quick_links')}</h3>
+                <ul className="space-y-2">
+                  {footerNav.map((item) => (
+                    <li key={item.label}>
+                      <Link
+                        href={getLocalizedPath(item.path)}
+                        className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                      >
+                        {item.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
           {/* Column 3: Placeholder */}
-          <div>
+          <div className="hidden lg:block">
             <h3 className="font-medium text-foreground mb-4">{t('category')}</h3>
             <ul className="space-y-2">
               {/* Add your links here */}
@@ -71,11 +73,11 @@ const Footer: React.FC = () => {
           </div>
         </div>
 
-        <div className="border-t border-border mt-8 pt-8 flex flex-col md:flex-row md:justify-between items-center">
+        <div className="border-t border-border mt-8 pt-6 flex flex-col space-y-4 md:space-y-0 md:flex-row md:justify-between md:items-center text-center md:text-left">
           <p className="text-sm text-muted-foreground">
             &copy; {currentYear} Solanize. {t('copyright')}
           </p>
-          <p className="text-sm text-muted-foreground mt-2 md:mt-0">
+          <p className="text-sm text-muted-foreground">
             {t('tagline')}
           </p>
         </div>
