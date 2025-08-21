@@ -4,6 +4,13 @@ const withNextIntl = createNextIntlPlugin('./i18n.ts');
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  experimental: {
+    allowedDevOrigins: [
+      '192.168.*.*',
+      '10.*.*.*',
+      '172.16.*.*',
+    ],
+  },
   trailingSlash: false,
   reactStrictMode: true,
   

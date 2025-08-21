@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
+// import { useWallet } from '@solana/wallet-adapter-react';
 import { ChatApi, ChatApiError, type ChatSession, type ChatMessage } from '@/lib/chatApi';
 import { useAuth } from './useAuth';
 
@@ -194,10 +194,10 @@ const sendMessage = useCallback(async (sessionId: string, content: string) => {
             created_at: response.user_message.created_at,
           },
           {
-            id: response.ai_message.id,
-            content: response.ai_message.content,
+            id: response.ai_response.id,
+            content: response.ai_response.content,
             role: 'assistant' as const,
-            created_at: response.ai_message.created_at,
+            created_at: response.ai_response.created_at,
           }
         ]
       },
@@ -235,7 +235,7 @@ const sendMessage = useCallback(async (sessionId: string, content: string) => {
   } finally {
     setLoading('sending', false);
   }
-}, [chatApi, setLoading, setError, handleApiError]);
+}, [chatApi, setLoading, setError]);
 
 
   // Delete session

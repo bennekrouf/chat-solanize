@@ -12,21 +12,23 @@ export const useAuth = () => {
   const [error, setError] = useState<string | null>(null);
 
   // Clear auth state when wallet disconnects
-  useEffect(() => {
-    if (!wallet.connected) {
-      setAuthState('disconnected');
-      setError(null);
-    } else if (wallet.connected && authState === 'disconnected') {
-      setAuthState('connected');
-    }
-  }, [wallet.connected, authState]);
+  // In useAuth.ts, add logging to the useEffect that monitors wallet.connected
+useEffect(() => {
+  console.log('Wallet connection state changed:', {
+    connected: wallet.connected,
+    publicKey: wallet.publicKey?.toBase58(),
+    authState,
+    connecting: wallet.connecting
+  });
+  
+  if (!wallet.connected) {
+    setAuthState('disconnected');
+    setError(null);
+  } else if (wallet.connected && authState === 'disconnected') {
+    setAuthState('connected');
+  }
+}, [wallet.connected, authState]);
 
-  // Auto-authenticate when wallet connects for the first time
-  useEffect(() => {
-    if (wallet.connected && wallet.publicKey && authState === 'connected') {
-      authenticateOnce();
-    }
-  }, [wallet.connected, wallet.publicKey, authState]);
 
   const authenticateOnce = useCallback(async () => {
     if (!wallet.publicKey || !wallet.signMessage || authState === 'authenticating') return;
@@ -73,7 +75,15 @@ export const useAuth = () => {
       setError(errorMsg);
       setAuthState('error');
     }
-  }, [wallet.publicKey, wallet.signMessage, authState]);
+  }, [authState, wallet]);
+
+  // Auto-authenticate when wallet connects for the first time
+  useEffect(() => {
+    if (wallet.connected && wallet.publicKey && authState === 'connected') {
+      authenticateOnce();
+    }
+  }, [wallet.connected, wallet.publicKey, authState, authenticateOnce]);
+
 
   // Manual retry function
   const retry = useCallback(() => {
