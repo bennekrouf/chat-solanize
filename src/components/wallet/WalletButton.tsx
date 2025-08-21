@@ -121,6 +121,7 @@ const WalletButton: React.FC = () => {
 
   return (
     <>
+    {mounted &&
       <button
         onClick={() => setShowWalletModal(true)}
         disabled={connecting}
@@ -129,7 +130,7 @@ const WalletButton: React.FC = () => {
         <FiCreditCard className="h-4 w-4" />
         {connecting ? 'Connecting...' : 'Connect Wallet'}
       </button>
-
+    }
       {/* Wallet Selection Modal */}
       {showWalletModal && mounted && createPortal(
         <div 

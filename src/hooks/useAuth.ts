@@ -83,26 +83,35 @@ export const useAuth = () => {
   }, [wallet.connected, wallet.publicKey]);
 
   // API call helper
-  const apiCall = useCallback(async (endpoint: string, options: RequestInit = {}) => {
-    const token = localStorage.getItem('auth_token');
-    const headers = {
-      'Content-Type': 'application/json',
-      ...(token && { 'Authorization': `Bearer ${token}` }),
-      ...options.headers,
-    };
+const apiCall = useCallback(async (endpoint: string, options: RequestInit = {}) => {
+  const token = localStorage.getItem('auth_token');
+  
+  // Only add Authorization header if we have a token AND it's not a GET request
+  // or if the method explicitly requires auth
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...options.headers as Record<string, string>,
+  };
+  
+  // Only add Authorization header when we have a token and it's needed
+  if (token && (options.method !== 'GET' || endpoint.includes('/sessions'))) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
 
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
-    
-    if (response.status === 401) {
-      // Token expired, clear it and mark as connected to re-auth
-      localStorage.removeItem('auth_token');
-      if (wallet.connected) {
-        setAuthState('connected');
-      }
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, { 
+    ...options, 
+    headers 
+  });
+  
+  if (response.status === 401) {
+    localStorage.removeItem('auth_token');
+    if (wallet.connected) {
+      setAuthState('connected');
     }
-    
-    return response;
-  }, [wallet.connected]);
+  }
+  
+  return response;
+}, [wallet.connected]);
 
   return {
     // Wallet state

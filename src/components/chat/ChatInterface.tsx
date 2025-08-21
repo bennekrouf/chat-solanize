@@ -7,6 +7,209 @@ import WalletButton from '@/components/wallet/WalletButton';
 import { useChat } from '@/hooks/useChat';
 import { useAuth } from '@/hooks/useAuth';
 
+// Transaction Card Components
+interface ProposedTransactionCardProps {
+  fromToken: string;
+  toToken: string;
+  fromAmount: string;
+  toAmount: string;
+  price: string;
+  fees: string;
+  slippage: string;
+  onSign: () => void;
+  onCancel: () => void;
+}
+
+const ProposedTransactionCard: React.FC<ProposedTransactionCardProps> = ({
+  fromToken, toToken, fromAmount, toAmount, price, fees, slippage, onSign, onCancel
+}) => (
+  <div className="mt-3 p-4 bg-background border border-border rounded-lg">
+    <div className="flex items-center justify-between mb-3">
+      <h4 className="text-sm font-semibold text-foreground">Proposed Swap</h4>
+      <span className="text-xs text-muted-foreground">Review transaction</span>
+    </div>
+    
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-muted-foreground">From</span>
+        <span className="text-sm font-medium">{fromAmount} {fromToken}</span>
+      </div>
+      <div className="flex items-center justify-center">
+        <div className="w-full h-px bg-border"></div>
+        <span className="px-2 text-xs text-muted-foreground">↓</span>
+        <div className="w-full h-px bg-border"></div>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-muted-foreground">To</span>
+        <span className="text-sm font-medium">{toAmount} {toToken}</span>
+      </div>
+      
+      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border">
+        <div className="text-center">
+          <div className="text-xs text-muted-foreground">Price</div>
+          <div className="text-xs font-medium">{price}</div>
+        </div>
+        <div className="text-center">
+          <div className="text-xs text-muted-foreground">Fees</div>
+          <div className="text-xs font-medium">{fees}</div>
+        </div>
+        <div className="text-center">
+          <div className="text-xs text-muted-foreground">Slippage</div>
+          <div className="text-xs font-medium">{slippage}</div>
+        </div>
+      </div>
+      
+      <div className="flex gap-2 pt-2">
+        <button
+          onClick={onCancel}
+          className="flex-1 px-3 py-2 text-sm bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onSign}
+          className="flex-1 px-3 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+        >
+          Sign
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
+interface ExecutedTransactionCardProps {
+  status: 'success' | 'failed';
+  txHash: string;
+  fromToken: string;
+  toToken: string;
+  fromAmount: string;
+  toAmount?: string;
+  timestamp: string;
+}
+
+const ExecutedTransactionCard: React.FC<ExecutedTransactionCardProps> = ({
+  status, txHash, fromToken, toToken, fromAmount, toAmount, timestamp
+}) => (
+  <div className={`mt-3 p-4 rounded-lg border ${
+    status === 'success' 
+      ? 'bg-green-500/5 border-green-500/20' 
+      : 'bg-red-500/5 border-red-500/20'
+  }`}>
+    <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center gap-2">
+        <span className={`text-lg ${status === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+          {status === 'success' ? '✓' : '✗'}
+        </span>
+        <h4 className="text-sm font-semibold text-foreground">
+          Transaction {status === 'success' ? 'Completed' : 'Failed'}
+        </h4>
+      </div>
+      <span className="text-xs text-muted-foreground">{timestamp}</span>
+    </div>
+    
+    <div className="space-y-2">
+      <div className="text-sm">
+        <span className="text-muted-foreground">Swapped: </span>
+        <span className="font-medium">{fromAmount} {fromToken}</span>
+        {toAmount && (
+          <>
+            <span className="text-muted-foreground"> → </span>
+            <span className="font-medium">{toAmount} {toToken}</span>
+          </>
+        )}
+      </div>
+      
+      <button
+        onClick={() => window.open(`https://solscan.io/tx/${txHash}`, '_blank')}
+        className="w-full mt-2 px-3 py-2 text-sm bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors flex items-center justify-center gap-2"
+      >
+        <span>View on Solscan</span>
+        <span className="text-xs">↗</span>
+      </button>
+    </div>
+  </div>
+);
+
+// Wallet Status Bar Component
+const WalletStatusBar: React.FC = () => {
+  const { isAuthenticated, publicKey } = useAuth();
+  
+  // Mock wallet data - replace with real wallet hook
+  const mockBalances = [
+    { symbol: 'SOL', amount: '2.45', usd: '$487.23', change: '+2.1%', icon: '◎' },
+    { symbol: 'USDC', amount: '1,250.00', usd: '$1,250.00', change: '0.0%', icon: '$' },
+    { symbol: 'ETH', amount: '0.125', usd: '$523.75', change: '+1.8%', icon: 'Ξ' }
+  ];
+
+  const mockPendingTx = 2;
+  const mockRecentTx = [
+    { id: '1', type: 'swap', status: 'success', timestamp: '2m ago' },
+    { id: '2', type: 'transfer', status: 'success', timestamp: '5m ago' },
+    { id: '3', type: 'swap', status: 'failed', timestamp: '8m ago' }
+  ];
+
+  if (!isAuthenticated) {
+    return (
+      <div className="h-20 border-t border-border bg-card/50 backdrop-blur-sm flex items-center justify-center">
+        <p className="text-sm text-muted-foreground">Connect wallet to view balances and transactions</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-20 border-t border-border bg-card/95 backdrop-blur-sm">
+      <div className="flex items-center justify-between h-full px-4">
+        {/* Left: Wallet Balances */}
+        <div className="flex items-center gap-4">
+          {mockBalances.map((balance) => (
+            <div key={balance.symbol} className="flex items-center gap-2 px-3 py-2 bg-background/50 rounded-lg">
+              <span className="text-base font-medium">{balance.icon}</span>
+              <div className="flex flex-col">
+                <span className="text-sm font-medium text-foreground">{balance.amount} {balance.symbol}</span>
+                <span className="text-xs text-muted-foreground">{balance.usd}</span>
+              </div>
+              <span className={`text-xs ${balance.change.startsWith('+') ? 'text-green-500' : balance.change.startsWith('-') ? 'text-red-500' : 'text-muted-foreground'}`}>
+                {balance.change}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Center: Pending Transactions */}
+        <div className="flex items-center gap-4">
+          {mockPendingTx > 0 && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+              <div className="animate-pulse w-2 h-2 bg-yellow-500 rounded-full"></div>
+              <span className="text-sm text-yellow-600 dark:text-yellow-400">
+                {mockPendingTx} pending
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Right: Recent Transactions */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground mr-2">Recent:</span>
+          {mockRecentTx.slice(0, 3).map((tx) => (
+            <button
+              key={tx.id}
+              onClick={() => window.open(`https://solscan.io/tx/${tx.id}`, '_blank')}
+              className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
+                tx.status === 'success' 
+                  ? 'bg-green-500/20 text-green-500 hover:bg-green-500/30' 
+                  : 'bg-red-500/20 text-red-500 hover:bg-red-500/30'
+              } transition-colors`}
+              title={`${tx.type} - ${tx.timestamp} - ${tx.status}`}
+            >
+              {tx.status === 'success' ? '✓' : '✗'}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ChatInterface: React.FC = () => {
   const [currentInput, setCurrentInput] = useState('');
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -28,7 +231,6 @@ const ChatInterface: React.FC = () => {
     getCurrentMessages,
     getCurrentSession,
   } = useChat();
-
 
   const currentMessages = getCurrentMessages();
 
@@ -56,14 +258,11 @@ const ChatInterface: React.FC = () => {
     setCurrentInput('');
 
     if (!isAuthenticated) {
-      // Mock response for unauthenticated users
-      // You could store this in local state if needed
       alert('Please connect your wallet to send messages');
       return;
     }
 
     if (!currentSession) {
-      // Auto-create session if none exists
       const newSession = await createSession();
       if (newSession) {
         await sendMessage(newSession.id, message);
@@ -131,9 +330,9 @@ const ChatInterface: React.FC = () => {
         </div>
       )}
 
-      {/* Chat Container */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* History Sidebar */}
+      {/* Three-Zone Layout Container */}
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* Left Sidebar - Conversations List */}
         <div className={`${
           isHistoryOpen ? 'translate-x-0' : '-translate-x-full'
         } fixed inset-y-0 left-0 z-50 w-80 bg-card border-r border-border transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 lg:flex lg:flex-col`}>
@@ -213,7 +412,7 @@ const ChatInterface: React.FC = () => {
           </div>
         </div>
 
-        {/* Main Chat Area */}
+        {/* Center - Main Chat Area */}
         <div className="flex-1 flex flex-col">
           {/* Chat Header */}
           <div className="flex items-center gap-4 p-4 border-b border-border bg-background/95 backdrop-blur-sm">
@@ -230,8 +429,8 @@ const ChatInterface: React.FC = () => {
             </div>
           </div>
 
-          {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto">
+          {/* Messages Area with bottom padding for status bar */}
+          <div className="flex-1 overflow-y-auto pb-24">
             {currentMessages.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center max-w-md mx-auto p-8">
@@ -250,51 +449,52 @@ const ChatInterface: React.FC = () => {
                 </div>
               </div>
             ) : (
-              <div className="space-y-6 p-4 pb-32">
-      {currentMessages.map((message) => (
-        <div
-          key={message.id}
-          className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-        >
-          <div className={`max-w-[80%] md:max-w-[70%] ${
-            message.role === 'user'
-              ? 'bg-primary text-primary-foreground' 
-              : 'bg-secondary text-secondary-foreground'
-          } rounded-2xl px-4 py-3`}>
-            <div className="whitespace-pre-wrap break-words">
-              {message.content}
-            </div>
-            <div className={`text-xs mt-2 opacity-70 ${
-              message.role === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground'
-            }`}>
-              {new Date(message.created_at).toLocaleTimeString([], { 
-                hour: '2-digit', 
-                minute: '2-digit' 
-              })}
-            </div>
-          </div>
-        </div>
-      ))}
-      
-      {/* Show AI thinking indicator when sending */}
-      {loading.sending && (
-        <div className="flex justify-start">
-          <div className="bg-secondary text-secondary-foreground rounded-2xl px-4 py-3">
-            <div className="flex items-center gap-2">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-              <span className="text-sm">AI is thinking...</span>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      <div ref={messagesEndRef} />
-    </div>
+              <div className="space-y-6 p-4">
+                {currentMessages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div className={`max-w-[80%] md:max-w-[70%] ${
+                      message.role === 'user'
+                        ? 'bg-primary text-primary-foreground' 
+                        : 'bg-secondary text-secondary-foreground'
+                    } rounded-2xl px-4 py-3`}>
+                      <div className="whitespace-pre-wrap break-words">
+                        {message.content}
+                      </div>
+                      {/* Transaction Cards would be rendered here based on message content */}
+                      <div className={`text-xs mt-2 opacity-70 ${
+                        message.role === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground'
+                      }`}>
+                        {new Date(message.created_at).toLocaleTimeString([], { 
+                          hour: '2-digit', 
+                          minute: '2-digit' 
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                
+                {/* Show AI thinking indicator when sending */}
+                {loading.sending && (
+                  <div className="flex justify-start">
+                    <div className="bg-secondary text-secondary-foreground rounded-2xl px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                        <span className="text-sm">AI is thinking...</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                <div ref={messagesEndRef} />
+              </div>
             )}
           </div>
 
-          {/* Input Area */}
-          <div className="border-t border-border bg-background/95 backdrop-blur-sm">
+          {/* Input Area - Positioned above status bar */}
+          <div className="absolute bottom-20 left-0 right-0 border-t border-border bg-background/95 backdrop-blur-sm">
             <div className="p-4">
               <div className="relative flex items-end gap-3 max-w-4xl mx-auto">
                 <div className="flex-1 relative">
@@ -330,6 +530,9 @@ const ChatInterface: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Bottom Status Bar - Always Visible */}
+      <WalletStatusBar />
 
       {/* Overlay for mobile */}
       {isHistoryOpen && (
