@@ -80,9 +80,10 @@ useEffect(() => {
   // Auto-authenticate when wallet connects for the first time
   useEffect(() => {
     if (wallet.connected && wallet.publicKey && authState === 'connected') {
+      console.log("Calling authenticateOnce");
       authenticateOnce();
     }
-  }, [wallet.connected, wallet.publicKey, authState, authenticateOnce]);
+  }, [wallet.connected, wallet.publicKey, authState]);
 
 
   // Manual retry function

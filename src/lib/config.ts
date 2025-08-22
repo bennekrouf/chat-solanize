@@ -12,7 +12,6 @@ interface SiteConfig {
     chat_api_url: string;
   };
   solana: {
-    // network: 'devnet' | 'testnet' | 'mainnet-beta';
     explorer_url: string;
   };
   logging: {
@@ -37,7 +36,6 @@ const defaultConfig: SiteConfig = {
     locale: "en"
   },
   api: {
-    solana_gateway_url: process.env.NEXT_PUBLIC_SOLANA_API_URL || "http://127.0.0.1:8080",
     chat_api_url: process.env.NEXT_PUBLIC_CHAT_API_URL || "http://127.0.0.1:5000"
   },
   solana: {
@@ -67,7 +65,6 @@ export const updateConfig = (newConfig: Partial<SiteConfig>): void => {
 };
 
 // Specific getters for commonly used values
-export const getSolanaApiUrl = (): string => config.api.solana_gateway_url;
 export const getChatApiUrl = (): string => config.api.chat_api_url;
 // export const getSolanaNetwork = (): string => config.solana.network;
 export const getExplorerUrl = (): string => config.solana.explorer_url;

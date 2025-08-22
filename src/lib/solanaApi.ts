@@ -106,13 +106,11 @@ export class SolanaApiError extends Error {
   }
 }
 
-import { getSolanaApiUrl } from './config';
-
 export class SolanaApi {
   private baseUrl: string;
 
   constructor(baseUrl?: string) {
-    this.baseUrl = baseUrl || getSolanaApiUrl();
+    this.baseUrl = baseUrl || 'http://127.0.0.1:5000'; // Use gateway for all requests
   }
 
   private async request<T>(
@@ -155,7 +153,7 @@ export class SolanaApi {
   }
 
   async getWalletTokens(pubkey: string): Promise<WalletTokens> {
-    return this.request<WalletTokens>('/api/v1/wallet/tokens', 'POST', { pubkey });
+    return this.request<WalletTokens>('/api/v1/transactions/wallet/tokens', 'POST', { pubkey });
   }
 
   async getTokenPrice(token: string): Promise<TokenPrice> {
