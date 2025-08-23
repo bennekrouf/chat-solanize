@@ -1,4 +1,4 @@
-// src/lib/chatApi.ts
+// src/lib/chatApi.ts - Updated for transaction signing support
 
 export interface ChatMessage {
   id: string;
@@ -14,29 +14,34 @@ export interface ChatSession {
   updated_at: string;
 }
 
+export interface PreparedTransaction {
+  type: 'transfer' | 'swap';
+  unsigned_transaction: string;
+  from: string;
+  to: string;
+  amount: number;
+  fromToken: string;
+  toToken: string;
+  toAmount?: number;
+  price?: string;
+  fees?: string;
+  slippage?: string;
+  required_signers: string[];
+  recent_blockhash: string;
+  transaction_id?: string; // Backend tracking ID
+}
+
 export interface SendMessageRequest {
   content: string;
   role: 'user';
+  signed_transaction?: string; // For when user is returning a signed transaction
+  transaction_id?: string; // Reference to the transaction being signed
 }
 
 export interface SendMessageResponse {
   user_message: ChatMessage;
   ai_response: ChatMessage;
-  prepared_transaction?: {
-    type: 'transfer' | 'swap';
-    unsigned_transaction: string;
-    from: string;
-    to: string;
-    amount: number;
-    fromToken: string;
-    toToken: string;
-    toAmount?: number;
-    price?: string;
-    fees?: string;
-    slippage?: string;
-    required_signers: string[];
-    recent_blockhash: string;
-  };
+  prepared_transaction?: PreparedTransaction;
 }
 
 export interface CreateSessionRequest {
@@ -137,6 +142,23 @@ export class ChatApi {
       if (error instanceof ChatApiError) throw error;
       throw new ChatApiError('Network error while sending message', 0);
     }
+  }
+
+  // New method for sending signed transactions back to the chat
+  async sendSignedTransaction(
+    sessionId: string, 
+    transactionId: string,
+    signedTransaction: string,
+    userMessage?: string
+  ): Promise<SendMessageResponse> {
+    const request: SendMessageRequest = {
+      content: userMessage || `Transaction signed and submitted`,
+      role: 'user',
+      signed_transaction: signedTransaction,
+      transaction_id: transactionId
+    };
+
+    return this.sendMessage(sessionId, request);
   }
 
   async deleteSession(sessionId: string): Promise<void> {

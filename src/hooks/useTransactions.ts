@@ -1,54 +1,40 @@
-// src/hooks/useTransactions.ts
+// src/hooks/useTransactions.ts - Simplified for chat-only architecture
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { Transaction } from '@solana/web3.js';
-import { SolanaApi, SolanaApiError, type PrepareTransactionResult, type PrepareSwapResult } from '@/lib/solanaApi';
+import { ChatApi, type PreparedTransaction } from '@/lib/chatApi';
 import { useAuth } from './useAuth';
 import { useWalletData } from './useWalletData';
 
-export interface TransactionState {
-  preparing: boolean;
+export interface TransactionSigningState {
   signing: boolean;
-  submitting: boolean;
   error: string | null;
 }
 
-export interface PendingTransaction {
+export interface PendingTransactionUI {
   id: string;
-  type: 'transfer' | 'swap';
-  from: string;
-  to: string;
-  fromToken: string;
-  toToken: string;
-  fromAmount: string;
-  toAmount?: string;
-  price?: string;
-  fees?: string;
-  slippage?: string;
-  preparedData: PrepareTransactionResult | PrepareSwapResult;
+  preparedTransaction: PreparedTransaction;
   timestamp: number;
 }
 
 export const useTransactions = () => {
   const { signTransaction } = useWallet();
-  const { isAuthenticated, publicKey } = useAuth();
+  const { isAuthenticated, apiCall } = useAuth();
   const { refresh: refreshWalletData } = useWalletData();
-  const solanaApi = useMemo(() => new SolanaApi(), []);
+  const chatApi = new ChatApi(apiCall);
   
-  const [state, setState] = useState<TransactionState>({
-    preparing: false,
+  const [state, setState] = useState<TransactionSigningState>({
     signing: false,
-    submitting: false,
     error: null,
   });
 
-  const [pendingTransactions, setPendingTransactions] = useState<PendingTransaction[]>([]);
+  const [pendingTransactions, setPendingTransactions] = useState<PendingTransactionUI[]>([]);
 
-  const setLoading = useCallback((key: keyof TransactionState, value: boolean) => {
+  const setLoading = useCallback((value: boolean) => {
     setState(prev => ({
       ...prev,
-      [key]: value,
+      signing: value,
       error: value ? null : prev.error, // Clear error when starting new operation
     }));
   }, []);
@@ -57,152 +43,73 @@ export const useTransactions = () => {
     setState(prev => ({ ...prev, error }));
   }, []);
 
-  // Prepare SOL transfer
-  const prepareTransfer = useCallback(async (
-    toAddress: string,
-    amount: number
-  ): Promise<PendingTransaction | null> => {
-    if (!isAuthenticated || !publicKey) {
-      setError('Wallet not connected');
-      return null;
-    }
+  // Add a transaction to the pending list (called when AI provides a prepared transaction)
+  const addPendingTransaction = useCallback((preparedTransaction: PreparedTransaction) => {
+    const pendingTx: PendingTransactionUI = {
+      id: `tx_${Date.now()}`,
+      preparedTransaction,
+      timestamp: Date.now(),
+    };
 
-    setLoading('preparing', true);
+    setPendingTransactions(prev => [...prev, pendingTx]);
+    return pendingTx;
+  }, []);
 
-    try {
-      const preparedData = await solanaApi.prepareTransfer(
-        publicKey.toBase58(),
-        toAddress,
-        amount
-      );
-
-      const pendingTx: PendingTransaction = {
-        id: `transfer_${Date.now()}`,
-        type: 'transfer',
-        from: preparedData.from,
-        to: preparedData.to,
-        fromToken: 'SOL',
-        toToken: 'SOL',
-        fromAmount: amount.toString(),
-        toAmount: amount.toString(),
-        fees: '~0.000005 SOL',
-        preparedData,
-        timestamp: Date.now(),
-      };
-
-      setPendingTransactions(prev => [...prev, pendingTx]);
-      return pendingTx;
-    } catch (error) {
-      const errorMsg = error instanceof SolanaApiError 
-        ? error.message 
-        : 'Failed to prepare transfer';
-      setError(errorMsg);
-      return null;
-    } finally {
-      setLoading('preparing', false);
-    }
-  }, [isAuthenticated, publicKey, solanaApi, setLoading, setError]);
-
-  // Prepare token swap
-  const prepareSwap = useCallback(async (
-    fromToken: string,
-    toToken: string,
-    amount: number
-  ): Promise<PendingTransaction | null> => {
-    if (!isAuthenticated || !publicKey) {
-      setError('Wallet not connected');
-      return null;
-    }
-
-    setLoading('preparing', true);
-
-    try {
-      const preparedData = await solanaApi.prepareSwap(
-        publicKey.toBase58(),
-        fromToken,
-        toToken,
-        amount
-      );
-
-      const pendingTx: PendingTransaction = {
-        id: `swap_${Date.now()}`,
-        type: 'swap',
-        from: publicKey.toBase58(),
-        to: publicKey.toBase58(),
-        fromToken,
-        toToken,
-        fromAmount: amount.toString(),
-        toAmount: preparedData.quote_info.expected_output.toString(),
-        price: `1 ${fromToken} = ${(preparedData.quote_info.expected_output / amount).toFixed(4)} ${toToken}`,
-        fees: '~0.000005 SOL',
-        slippage: `${preparedData.quote_info.price_impact.toFixed(2)}%`,
-        preparedData,
-        timestamp: Date.now(),
-      };
-
-      setPendingTransactions(prev => [...prev, pendingTx]);
-      return pendingTx;
-    } catch (error) {
-      const errorMsg = error instanceof SolanaApiError 
-        ? error.message 
-        : 'Failed to prepare swap';
-      setError(errorMsg);
-      return null;
-    } finally {
-      setLoading('preparing', false);
-    }
-  }, [isAuthenticated, publicKey, solanaApi, setLoading, setError]);
-
-  // Sign and submit transaction
-  const executeTransaction = useCallback(async (pendingTx: PendingTransaction): Promise<boolean> => {
+  // Sign a transaction and send it back to the chat
+  const signAndSendTransaction = useCallback(async (
+    sessionId: string,
+    pendingTx: PendingTransactionUI
+  ): Promise<boolean> => {
     if (!signTransaction) {
       setError('Wallet does not support signing');
       return false;
     }
 
-    setLoading('signing', true);
+    if (!isAuthenticated) {
+      setError('Not authenticated');
+      return false;
+    }
+
+    setLoading(true);
 
     try {
       // Decode the unsigned transaction
       const transaction = Transaction.from(
-        Buffer.from(pendingTx.preparedData.unsigned_transaction, 'base64')
+        Buffer.from(pendingTx.preparedTransaction.unsigned_transaction, 'base64')
       );
 
       // Sign the transaction
       const signedTransaction = await signTransaction(transaction);
       
-      setLoading('signing', false);
-      setLoading('submitting', true);
-
-      // Submit to network
-      const result = await solanaApi.submitTransaction(
-        Buffer.from(signedTransaction.serialize()).toString('base64')
+      // Send the signed transaction back to the chat
+      const signedTxString = Buffer.from(signedTransaction.serialize()).toString('base64');
+      
+      await chatApi.sendSignedTransaction(
+        sessionId,
+        pendingTx.preparedTransaction.transaction_id || pendingTx.id,
+        signedTxString,
+        'Transaction signed and ready for submission'
       );
 
-      console.log('Transaction submitted:', result.signature);
-
-      // Remove from pending and refresh wallet data
+      // Remove from pending
       setPendingTransactions(prev => prev.filter(tx => tx.id !== pendingTx.id));
       
-      // Refresh wallet data to show updated balances
-      setTimeout(() => refreshWalletData(), 2000);
+      // Refresh wallet data after a short delay to show updated balances
+      setTimeout(() => refreshWalletData(), 3000);
 
       return true;
     } catch (error) {
-      const errorMsg = error instanceof SolanaApiError 
+      const errorMsg = error instanceof Error 
         ? error.message 
-        : error instanceof Error 
-        ? error.message 
-        : 'Transaction failed';
+        : 'Transaction signing failed';
       setError(errorMsg);
       return false;
     } finally {
-      setLoading('signing', false);
-      setLoading('submitting', false);
+      setLoading(false);
     }
-  }, [signTransaction, solanaApi, refreshWalletData, setLoading, setError]);
+  }, [signTransaction, isAuthenticated, chatApi, refreshWalletData, setLoading, setError]);
 
-  // Cancel pending transaction
+  // Cancel a pending transaction
   const cancelTransaction = useCallback((txId: string) => {
     setPendingTransactions(prev => prev.filter(tx => tx.id !== txId));
   }, []);
@@ -223,14 +130,13 @@ export const useTransactions = () => {
     pendingTransactions,
     
     // Computed
-    isLoading: Object.values(state).some(v => typeof v === 'boolean' && v),
+    isLoading: state.signing,
     hasError: !!state.error,
     hasPendingTransactions: pendingTransactions.length > 0,
 
     // Actions
-    prepareTransfer,
-    prepareSwap,
-    executeTransaction,
+    addPendingTransaction,
+    signAndSendTransaction,
     cancelTransaction,
     clearPendingTransactions,
     clearError,

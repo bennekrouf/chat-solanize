@@ -1,8 +1,9 @@
+// src/hooks/useAuth.ts - Fixed to match backend API guidelines
+
 import { useState, useCallback, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import bs58 from 'bs58';
-
-const API_BASE_URL = 'http://127.0.0.1:5000';
+import { getGatewayUrl, API_ENDPOINTS } from '@/lib/config';
 
 type AuthState = 'disconnected' | 'connected' | 'authenticating' | 'authenticated' | 'error';
 
@@ -12,23 +13,22 @@ export const useAuth = () => {
   const [error, setError] = useState<string | null>(null);
 
   // Clear auth state when wallet disconnects
-  // In useAuth.ts, add logging to the useEffect that monitors wallet.connected
-useEffect(() => {
-  console.log('Wallet connection state changed:', {
-    connected: wallet.connected,
-    publicKey: wallet.publicKey?.toBase58(),
-    authState,
-    connecting: wallet.connecting
-  });
-  
-  if (!wallet.connected) {
-    setAuthState('disconnected');
-    setError(null);
-  } else if (wallet.connected && authState === 'disconnected') {
-    setAuthState('connected');
-  }
-}, [wallet.connected, authState]);
-
+  useEffect(() => {
+    console.log('Wallet connection state changed:', {
+      connected: wallet.connected,
+      publicKey: wallet.publicKey?.toBase58(),
+      authState,
+      connecting: wallet.connecting
+    });
+    
+    if (!wallet.connected) {
+      setAuthState('disconnected');
+      setError(null);
+      localStorage.removeItem('auth_token');
+    } else if (wallet.connected && authState === 'disconnected') {
+      setAuthState('connected');
+    }
+  }, [wallet.connected, authState]);
 
   const authenticateOnce = useCallback(async () => {
     if (!wallet.publicKey || !wallet.signMessage || authState === 'authenticating') return;
@@ -38,22 +38,27 @@ useEffect(() => {
 
     try {
       const walletAddress = wallet.publicKey.toBase58();
+      const gatewayUrl = getGatewayUrl();
       
-      // Get challenge
-      const challengeResponse = await fetch(`${API_BASE_URL}/api/v1/auth/challenge/${walletAddress}`, {
+      // Get challenge using the correct endpoint
+      const challengeResponse = await fetch(`${gatewayUrl}${API_ENDPOINTS.AUTH.CHALLENGE(walletAddress)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
       
-      if (!challengeResponse.ok) throw new Error('Failed to get challenge');
+      if (!challengeResponse.ok) {
+        const errorData = await challengeResponse.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to get challenge');
+      }
+      
       const { challenge } = await challengeResponse.json();
       
       // Sign challenge
       const messageBytes = new TextEncoder().encode(challenge);
       const signature = await wallet.signMessage(messageBytes);
       
-      // Verify signature
-      const verifyResponse = await fetch(`${API_BASE_URL}/api/v1/auth/verify`, {
+      // Verify signature using the correct endpoint
+      const verifyResponse = await fetch(`${gatewayUrl}${API_ENDPOINTS.AUTH.VERIFY}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -63,7 +68,11 @@ useEffect(() => {
         }),
       });
       
-      if (!verifyResponse.ok) throw new Error('Authentication failed');
+      if (!verifyResponse.ok) {
+        const errorData = await verifyResponse.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Authentication failed');
+      }
+      
       const { jwt } = await verifyResponse.json();
       
       // Store token and mark as authenticated
@@ -83,8 +92,7 @@ useEffect(() => {
       console.log("Calling authenticateOnce");
       authenticateOnce();
     }
-  }, [wallet.connected, wallet.publicKey, authState]);
-
+  }, [wallet.connected, wallet.publicKey, authState, authenticateOnce]);
 
   // Manual retry function
   const retry = useCallback(() => {
@@ -93,36 +101,75 @@ useEffect(() => {
     }
   }, [wallet.connected, wallet.publicKey]);
 
-  // API call helper
-const apiCall = useCallback(async (endpoint: string, options: RequestInit = {}) => {
-  const token = localStorage.getItem('auth_token');
-  
-  // Only add Authorization header if we have a token AND it's not a GET request
-  // or if the method explicitly requires auth
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...options.headers as Record<string, string>,
-  };
-  
-  // Only add Authorization header when we have a token and it's needed
-  if (token && (options.method !== 'GET' || endpoint.includes('/sessions'))) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, { 
-    ...options, 
-    headers 
-  });
-  
-  if (response.status === 401) {
-    localStorage.removeItem('auth_token');
-    if (wallet.connected) {
-      setAuthState('connected');
+  // API call helper that properly handles authentication and routing
+  const apiCall = useCallback(async (endpoint: string, options: RequestInit = {}) => {
+    const token = localStorage.getItem('auth_token');
+    const gatewayUrl = getGatewayUrl();
+    
+    // Build headers
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...options.headers as Record<string, string>,
+    };
+    
+    // Add Authorization header for protected endpoints
+    // According to the API guidelines, most endpoints require JWT except auth endpoints
+    const isAuthEndpoint = endpoint.startsWith('/api/v1/auth/');
+    // const isGetRequest = (options.method || 'GET') === 'GET';
+    
+    if (token && !isAuthEndpoint) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
-  }
-  
-  return response;
-}, [wallet.connected]);
+    
+    // Make sure we don't double-prefix the URL
+    const fullUrl = endpoint.startsWith('http') ? endpoint : `${gatewayUrl}${endpoint}`;
+
+    console.log('API Call:', {
+      url: fullUrl,
+      method: options.method || 'GET',
+      hasAuth: !!headers['Authorization'],
+      endpoint
+    });
+
+    const response = await fetch(fullUrl, { 
+      ...options, 
+      headers 
+    });
+    
+    // Handle 401 responses by clearing auth and redirecting to reconnect
+    if (response.status === 401) {
+      localStorage.removeItem('auth_token');
+      if (wallet.connected) {
+        setAuthState('connected');
+      } else {
+        setAuthState('disconnected');
+      }
+    }
+    
+    return response;
+  }, [wallet.connected]);
+
+  // Refresh JWT token
+  const refreshToken = useCallback(async () => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return false;
+
+    try {
+      const response = await apiCall(API_ENDPOINTS.AUTH.REFRESH, {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        const { jwt } = await response.json();
+        localStorage.setItem('auth_token', jwt);
+        return true;
+      }
+    } catch (error) {
+      console.error('Token refresh failed:', error);
+    }
+    
+    return false;
+  }, [apiCall]);
 
   return {
     // Wallet state
@@ -137,6 +184,9 @@ const apiCall = useCallback(async (endpoint: string, options: RequestInit = {}) 
     // Error handling
     error,
     retry,
+    
+    // Token management
+    refreshToken,
     
     // API helper
     apiCall,

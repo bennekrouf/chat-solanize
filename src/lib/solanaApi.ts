@@ -1,4 +1,4 @@
-// src/lib/solanaApi.ts
+// src/lib/solanaApi.ts - Simplified for chat-only architecture
 
 export interface SolanaApiResponse<T> {
   success: boolean;
@@ -7,7 +7,7 @@ export interface SolanaApiResponse<T> {
 }
 
 export interface WalletBalance {
-  pubkey: string;
+  wallet_address: string;
   balance: number;
   token: string;
 }
@@ -45,17 +45,11 @@ export interface TransactionHistoryItem {
 }
 
 export interface TransactionHistory {
-  pubkey: string;
+  wallet_address: string;
   transactions: TransactionHistoryItem[];
   total_count: number;
   has_more: boolean;
   next_before: string | null;
-}
-
-export interface PendingTransactions {
-  pubkey: string;
-  pending_transactions: TransactionHistoryItem[];
-  count: number;
 }
 
 export interface TokenSearchResult {
@@ -64,41 +58,15 @@ export interface TokenSearchResult {
 }
 
 export interface WalletTokens {
-  pubkey: string;
+  wallet_address: string;
   tokens: WalletToken[];
   total_tokens: number;
-}
-
-export interface PrepareTransactionResult {
-  unsigned_transaction: string;
-  from: string;
-  to: string;
-  amount: number;
-  required_signers: string[];
-  recent_blockhash: string;
-}
-
-export interface SwapQuoteInfo {
-  expected_output: number;
-  price_impact: number;
-  route_steps: number;
-}
-
-export interface PrepareSwapResult {
-  unsigned_transaction: string;
-  quote_info: SwapQuoteInfo;
-  required_signers: string[];
-  recent_blockhash: string;
-}
-
-export interface SubmitTransactionResult {
-  signature: string;
-  status: string;
 }
 
 export class SolanaApiError extends Error {
   constructor(
     message: string,
+    public status?: number,
     public response?: SolanaApiResponse<unknown>
   ) {
     super(message);
@@ -107,34 +75,35 @@ export class SolanaApiError extends Error {
 }
 
 export class SolanaApi {
-  private baseUrl: string;
-
-  constructor(baseUrl?: string) {
-    this.baseUrl = baseUrl || 'http://127.0.0.1:5000'; // Use gateway for all requests
-  }
+  constructor(private apiCall: (endpoint: string, options?: RequestInit) => Promise<Response>) {}
 
   private async request<T>(
     endpoint: string,
-    method: 'GET' | 'POST' = 'POST',
+    method: 'GET' | 'POST' = 'GET',
     body?: Record<string, unknown>
   ): Promise<T> {
     try {
-      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      const options: RequestInit = {
         method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: body ? JSON.stringify(body) : undefined,
-      });
+      };
+
+      if (body) {
+        options.body = JSON.stringify(body);
+      }
+
+      const response = await this.apiCall(endpoint, options);
 
       if (!response.ok) {
-        throw new SolanaApiError(`HTTP ${response.status}: ${response.statusText}`);
+        throw new SolanaApiError(`HTTP ${response.status}: ${response.statusText}`, response.status);
       }
 
       const result: SolanaApiResponse<T> = await response.json();
       
       if (!result.success) {
-        throw new SolanaApiError(result.error || 'Unknown API error', result);
+        throw new SolanaApiError(result.error || 'Unknown API error', 0, result);
       }
 
       return result.data!;
@@ -144,70 +113,50 @@ export class SolanaApi {
     }
   }
 
+  // Read-only data endpoints - these are still useful for the UI
   async healthCheck(): Promise<string> {
-    return this.request<string>('/api/v1/health', 'GET');
+    return this.request<string>('/api/v1/transactions/health', 'GET');
   }
 
-  async getBalance(pubkey: string): Promise<WalletBalance> {
-    return this.request<WalletBalance>('/api/v1/balance', 'POST', { pubkey });
+  async getBalance(wallet_address: string): Promise<WalletBalance> {
+    return this.request<WalletBalance>(`/api/v1/transactions/balance/${wallet_address}`, 'GET');
   }
 
-  async getWalletTokens(pubkey: string): Promise<WalletTokens> {
-    return this.request<WalletTokens>('/api/v1/transactions/wallet/tokens', 'POST', { pubkey });
+  async getWalletTokens(wallet_address: string): Promise<WalletTokens> {
+    return this.request<WalletTokens>('/api/v1/transactions/wallet/tokens', 'POST', { 
+      wallet_address 
+    });
   }
 
-  async getTokenPrice(token: string): Promise<TokenPrice> {
-    return this.request<TokenPrice>('/api/v1/price', 'POST', { token });
+  async getTokenPrice(tokens: string[]): Promise<TokenPrice[]> {
+    return this.request<TokenPrice[]>('/api/v1/transactions/price', 'POST', { tokens });
   }
 
   async searchTokens(query: string): Promise<TokenSearchResult> {
-    return this.request<TokenSearchResult>('/api/v1/tokens/search', 'POST', { query });
+    return this.request<TokenSearchResult>('/api/v1/transactions/tokens/search', 'POST', { query });
   }
 
   async getTransactionHistory(
-    pubkey: string,
+    wallet_address: string,
     limit: number = 20,
-    before?: string
+    offset: number = 0
   ): Promise<TransactionHistory> {
-    const body: Record<string, unknown> = { pubkey, limit };
-    if (before) body.before = before;
-    
-    return this.request<TransactionHistory>('/api/v1/transactions/history', 'POST', body);
-  }
-
-  async getPendingTransactions(pubkey: string): Promise<PendingTransactions> {
-    return this.request<PendingTransactions>('/api/v1/transactions/pending', 'POST', { pubkey });
-  }
-
-  async prepareTransfer(
-    payer_pubkey: string,
-    to_address: string,
-    amount: number
-  ): Promise<PrepareTransactionResult> {
-    return this.request<PrepareTransactionResult>('/api/v1/transaction/prepare', 'POST', {
-      payer_pubkey,
-      to_address,
-      amount
+    return this.request<TransactionHistory>('/api/v1/transactions/history', 'POST', {
+      wallet_address,
+      limit,
+      offset
     });
   }
 
-  async prepareSwap(
-    payer_pubkey: string,
-    from_token: string,
-    to_token: string,
-    amount: number
-  ): Promise<PrepareSwapResult> {
-    return this.request<PrepareSwapResult>('/api/v1/swap/prepare', 'POST', {
-      payer_pubkey,
-      from_token,
-      to_token,
-      amount
-    });
+  async getUserPaymentHistory(): Promise<TransactionHistory> {
+    return this.request<TransactionHistory>('/api/v1/transactions/history', 'GET');
   }
 
-  async submitTransaction(signed_transaction: string): Promise<SubmitTransactionResult> {
-    return this.request<SubmitTransactionResult>('/api/v1/transaction/submit', 'POST', {
-      signed_transaction
-    });
-  }
+  // Transaction operations are now handled through chat
+  // These methods are removed since backend handles them:
+  // - createTransaction
+  // - confirmTransaction 
+  // - prepareTransfer
+  // - prepareSwap
+  // - submitTransaction
 }

@@ -1,4 +1,4 @@
-// src/hooks/useWalletData.ts
+// src/hooks/useWalletData.ts - Fixed to match backend API guidelines
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useAuth } from './useAuth';
@@ -7,37 +7,37 @@ import { SolanaApi, type WalletToken, type TransactionHistoryItem, type TokenPri
 interface WalletDataState {
   balances: WalletToken[];
   transactions: TransactionHistoryItem[];
-  pendingTransactions: TransactionHistoryItem[];
-  prices: Record<string, TokenPrice>;
+  userPaymentHistory: TransactionHistoryItem[]; // New: user's payment history
+  prices: TokenPrice[];
   loading: {
     balances: boolean;
     transactions: boolean;
-    pending: boolean;
+    userHistory: boolean;
     prices: boolean;
   };
   error: string | null;
   hasMoreTransactions: boolean;
-  nextTransactionBefore: string | null;
+  currentOffset: number;
 }
 
 export const useWalletData = () => {
-  const { isAuthenticated, publicKey } = useAuth();
-  const solanaApi = useMemo(() => new SolanaApi(), []);
+  const { isAuthenticated, publicKey, apiCall } = useAuth();
+  const solanaApi = useMemo(() => new SolanaApi(apiCall), [apiCall]);
   
   const [state, setState] = useState<WalletDataState>({
     balances: [],
     transactions: [],
-    pendingTransactions: [],
-    prices: {},
+    userPaymentHistory: [],
+    prices: [],
     loading: {
       balances: false,
       transactions: false,
-      pending: false,
+      userHistory: false,
       prices: false,
     },
     error: null,
     hasMoreTransactions: false,
-    nextTransactionBefore: null,
+    currentOffset: 0,
   });
 
   const setLoading = useCallback((key: keyof WalletDataState['loading'], value: boolean) => {
@@ -58,7 +58,6 @@ export const useWalletData = () => {
       return;
     }
 
-    // Don't reload if we already have data and not refreshing
     if (state.balances.length > 0 && !refresh) return;
 
     setLoading('balances', true);
@@ -81,25 +80,26 @@ export const useWalletData = () => {
     }
   }, [isAuthenticated, publicKey, solanaApi, state.balances.length, setLoading, setError]);
 
-  // Load transaction history
-  const loadTransactions = useCallback(async (refresh = false, loadMore = false) => {
-    if (!isAuthenticated || !publicKey) {
+  // Load transaction history for any wallet (public endpoint)
+  const loadTransactions = useCallback(async (walletAddress?: string, refresh = false, loadMore = false) => {
+    if (!walletAddress && !publicKey) {
       setState(prev => ({ ...prev, transactions: [], hasMoreTransactions: false }));
       return;
     }
 
-    // Don't reload if we already have data and not refreshing/loading more
+    const targetWallet = walletAddress || publicKey!.toBase58();
+
     if (state.transactions.length > 0 && !refresh && !loadMore) return;
 
     setLoading('transactions', true);
     setError(null);
 
     try {
-      const before = loadMore ? state.nextTransactionBefore : undefined;
+      const offset = loadMore ? state.currentOffset : 0;
       const historyData = await solanaApi.getTransactionHistory(
-        publicKey.toBase58(),
+        targetWallet,
         20,
-        before || undefined
+        offset
       );
 
       setState(prev => ({
@@ -108,7 +108,7 @@ export const useWalletData = () => {
           ? [...prev.transactions, ...historyData.transactions]
           : historyData.transactions,
         hasMoreTransactions: historyData.has_more,
-        nextTransactionBefore: historyData.next_before,
+        currentOffset: offset + historyData.transactions.length,
       }));
     } catch (error) {
       const errorMsg = error instanceof SolanaApiError 
@@ -119,30 +119,32 @@ export const useWalletData = () => {
     } finally {
       setLoading('transactions', false);
     }
-  }, [isAuthenticated, publicKey, solanaApi, state.transactions.length, state.nextTransactionBefore, setLoading, setError]);
+  }, [publicKey, solanaApi, state.transactions.length, state.currentOffset, setLoading, setError]);
 
-  // Load pending transactions
-  const loadPendingTransactions = useCallback(async () => {
-    if (!isAuthenticated || !publicKey) {
-      setState(prev => ({ ...prev, pendingTransactions: [] }));
+  // Load user's payment history (authenticated endpoint)
+  const loadUserPaymentHistory = useCallback(async (refresh = false) => {
+    if (!isAuthenticated) {
+      setState(prev => ({ ...prev, userPaymentHistory: [] }));
       return;
     }
 
-    setLoading('pending', true);
+    if (state.userPaymentHistory.length > 0 && !refresh) return;
+
+    setLoading('userHistory', true);
 
     try {
-      const pendingData = await solanaApi.getPendingTransactions(publicKey.toBase58());
+      const historyData = await solanaApi.getUserPaymentHistory();
       setState(prev => ({
         ...prev,
-        pendingTransactions: pendingData.pending_transactions
+        userPaymentHistory: historyData.transactions
       }));
     } catch (error) {
-      // Pending transactions failure shouldn't block other functionality
-      console.error('Failed to load pending transactions:', error);
+      console.error('Failed to load user payment history:', error);
+      // Don't set error for this since it's optional
     } finally {
-      setLoading('pending', false);
+      setLoading('userHistory', false);
     }
-  }, [isAuthenticated, publicKey, solanaApi, setLoading]);
+  }, [isAuthenticated, solanaApi, state.userPaymentHistory.length, setLoading]);
 
   // Load token prices for held tokens
   const loadTokenPrices = useCallback(async () => {
@@ -151,24 +153,12 @@ export const useWalletData = () => {
     setLoading('prices', true);
 
     try {
-      const pricePromises = state.balances.map(async (token) => {
-        try {
-          const price = await solanaApi.getTokenPrice(token.symbol);
-          return { [token.symbol]: price };
-        } catch (error) {
-          console.warn(`Failed to load price for ${token.symbol}:`, error);
-          return null;
-        }
-      });
-
-      const priceResults = await Promise.all(pricePromises);
-      const prices = priceResults.reduce((acc, result) => {
-        return result ? { ...acc, ...result } : acc;
-      }, {});
-
+      const tokenSymbols = state.balances.map(token => token.symbol);
+      const prices = await solanaApi.getTokenPrice(tokenSymbols);
+      
       setState(prev => ({
         ...prev,
-        prices: { ...prev.prices, ...prices }
+        prices
       }));
     } catch (error) {
       console.error('Failed to load token prices:', error);
@@ -194,15 +184,14 @@ export const useWalletData = () => {
   const loadWalletData = useCallback(async (refresh = false) => {
     if (!isAuthenticated || !publicKey) return;
 
-    // Load balances first, then transactions and pending in parallel
+    // Load balances first, then others in parallel
     await loadBalances(refresh);
     
-    // Load transactions and pending in parallel
     await Promise.all([
-      loadTransactions(refresh),
-      loadPendingTransactions(),
+      loadTransactions(undefined, refresh),
+      loadUserPaymentHistory(refresh),
     ]);
-  }, [isAuthenticated, publicKey, loadBalances, loadTransactions, loadPendingTransactions]);
+  }, [isAuthenticated, publicKey, loadBalances, loadTransactions, loadUserPaymentHistory]);
 
   // Auto-load data when wallet connects
   useEffect(() => {
@@ -218,17 +207,6 @@ export const useWalletData = () => {
     }
   }, [state.balances.length, loadTokenPrices]);
 
-  // Auto-refresh pending transactions periodically
-  useEffect(() => {
-    if (!isAuthenticated || state.pendingTransactions.length === 0) return;
-
-    const interval = setInterval(() => {
-      loadPendingTransactions();
-    }, 10000); // Check every 10 seconds
-
-    return () => clearInterval(interval);
-  }, [isAuthenticated, state.pendingTransactions.length, loadPendingTransactions]);
-
   // Computed values
   const totalPortfolioValue = useMemo(() => {
     return state.balances.reduce((total, token) => total + token.usd_value, 0);
@@ -242,11 +220,16 @@ export const useWalletData = () => {
     return state.transactions.slice(0, 5);
   }, [state.transactions]);
 
+  const pendingTransactions = useMemo(() => {
+    return state.transactions.filter(tx => tx.status === 'Pending');
+  }, [state.transactions]);
+
   return {
     // State
     balances: state.balances,
     transactions: state.transactions,
-    pendingTransactions: state.pendingTransactions,
+    userPaymentHistory: state.userPaymentHistory,
+    pendingTransactions,
     prices: state.prices,
     loading: state.loading,
     error: state.error,
@@ -256,20 +239,23 @@ export const useWalletData = () => {
     totalPortfolioValue,
     isLoading,
     recentTransactions,
-    hasPendingTransactions: state.pendingTransactions.length > 0,
+    hasPendingTransactions: pendingTransactions.length > 0,
 
     // Actions
     loadWalletData,
     loadBalances,
     loadTransactions,
-    loadPendingTransactions,
-    loadMoreTransactions: () => loadTransactions(false, true),
+    loadUserPaymentHistory,
+    loadMoreTransactions: () => loadTransactions(undefined, false, true),
     searchTokens,
     refresh: () => loadWalletData(true),
     clearError: () => setError(null),
 
     // Utils
-    getTokenPrice: (symbol: string) => state.prices[symbol]?.price || 0,
+    getTokenPrice: (symbol: string) => {
+      const priceData = state.prices.find(p => p.token === symbol);
+      return priceData?.price || 0;
+    },
     getTokenBalance: (symbol: string) => state.balances.find(t => t.symbol === symbol)?.balance || 0,
   };
 };

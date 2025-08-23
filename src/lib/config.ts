@@ -1,4 +1,4 @@
-// src/lib/config.ts
+// src/lib/config.ts - Fixed to match backend API guidelines
 
 interface SiteConfig {
   site: {
@@ -8,8 +8,7 @@ interface SiteConfig {
     locale: string;
   };
   api: {
-    solana_gateway_url: string;
-    chat_api_url: string;
+    gateway_url: string; // Single gateway URL for all API calls
   };
   solana: {
     explorer_url: string;
@@ -27,7 +26,7 @@ interface SiteConfig {
   };
 }
 
-// Default configuration
+// Default configuration - CRITICAL: Always use gateway URL
 const defaultConfig: SiteConfig = {
   site: {
     name: "Solanize",
@@ -36,10 +35,10 @@ const defaultConfig: SiteConfig = {
     locale: "en"
   },
   api: {
-    chat_api_url: process.env.NEXT_PUBLIC_CHAT_API_URL || "http://127.0.0.1:5000"
+    // IMPORTANT: All API calls must go through the gateway on port 5000
+    gateway_url: process.env.NEXT_PUBLIC_GATEWAY_URL || "http://127.0.0.1:5000"
   },
   solana: {
-    // network: (process.env.NEXT_PUBLIC_SOLANA_NETWORK as unknown) || "devnet",
     explorer_url: process.env.NEXT_PUBLIC_SOLANA_EXPLORER || "https://solscan.io"
   },
   logging: {
@@ -65,8 +64,7 @@ export const updateConfig = (newConfig: Partial<SiteConfig>): void => {
 };
 
 // Specific getters for commonly used values
-export const getChatApiUrl = (): string => config.api.chat_api_url;
-// export const getSolanaNetwork = (): string => config.solana.network;
+export const getGatewayUrl = (): string => config.api.gateway_url;
 export const getExplorerUrl = (): string => config.solana.explorer_url;
 export const getRefreshInterval = (): number => config.transactions.refresh_interval;
 
@@ -74,17 +72,17 @@ export const getRefreshInterval = (): number => config.transactions.refresh_inte
 export const validateConfig = (): { isValid: boolean; errors: string[] } => {
   const errors: string[] = [];
 
-  if (!config.api.solana_gateway_url) {
-    errors.push("Missing Solana Gateway API URL");
+  if (!config.api.gateway_url) {
+    errors.push("Missing Gateway API URL - all requests must go through the gateway");
   }
 
-  if (!config.api.chat_api_url) {
-    errors.push("Missing Chat API URL");
+  // Validate that we're not accidentally using microservice URLs
+  if (config.api.gateway_url.includes(':8080') || 
+      config.api.gateway_url.includes(':8001') ||
+      config.api.gateway_url.includes('solana-service') ||
+      config.api.gateway_url.includes('chat-service')) {
+    errors.push("Invalid API URL: Must use gateway URL (port 5000), not microservice URLs");
   }
-
-  // if (!['devnet', 'testnet', 'mainnet-beta'].includes(config.solana.network)) {
-  //   errors.push("Invalid Solana network specified");
-  // }
 
   if (config.transactions.default_slippage < 0 || config.transactions.default_slippage > config.transactions.max_slippage) {
     errors.push("Invalid slippage configuration");
@@ -96,6 +94,38 @@ export const validateConfig = (): { isValid: boolean; errors: string[] } => {
   };
 };
 
+// Available API endpoints according to backend guidelines
+export const API_ENDPOINTS = {
+  // Authentication (No JWT Required)
+  AUTH: {
+    CHALLENGE: (wallet_address: string) => `/api/v1/auth/challenge/${wallet_address}`,
+    VERIFY: '/api/v1/auth/verify',
+    REFRESH: '/api/v1/auth/refresh'
+  },
+  
+  // Chat (JWT Required)
+  CHAT: {
+    SESSIONS: '/api/v1/chat/sessions',
+    SESSION_MESSAGES: (id: string) => `/api/v1/chat/sessions/${id}/messages`,
+    DELETE_SESSION: (id: string) => `/api/v1/chat/sessions/${id}`,
+    HEALTH: '/api/v1/chat/health',
+    MODELS: '/api/v1/chat/models'
+  },
+  
+  // Transactions (JWT Required for some)
+  TRANSACTIONS: {
+    CREATE: '/api/v1/transactions/create',
+    CONFIRM: '/api/v1/transactions/confirm',
+    USER_HISTORY: '/api/v1/transactions/history', // GET - user's payment history
+    WALLET_HISTORY: '/api/v1/transactions/history', // POST - any wallet's history
+    WALLET_TOKENS: '/api/v1/transactions/wallet/tokens',
+    PRICE: '/api/v1/transactions/price',
+    TOKEN_SEARCH: '/api/v1/transactions/tokens/search',
+    BALANCE: (wallet: string) => `/api/v1/transactions/balance/${wallet}`,
+    HEALTH: '/api/v1/transactions/health'
+  }
+} as const;
+
 // Initialize configuration
 if (typeof window !== 'undefined') {
   const validation = validateConfig();
@@ -104,10 +134,7 @@ if (typeof window !== 'undefined') {
   }
   
   console.info('Solanize configuration loaded:', {
-    // solanaNetwork: config.solana.network,
-    apiEndpoints: {
-      solana: config.api.solana_gateway_url,
-      chat: config.api.chat_api_url
-    }
+    gatewayUrl: config.api.gateway_url,
+    environment: process.env.NODE_ENV
   });
 }
