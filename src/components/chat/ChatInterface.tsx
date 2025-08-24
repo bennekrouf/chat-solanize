@@ -6,6 +6,8 @@ import { useTheme } from 'next-themes';
 import WalletButton from '@/components/wallet/WalletButton';
 import { useChat } from '@/hooks/useChat';
 import { useAuth } from '@/contexts/AuthContext';
+import ActionProposal from '@/components/chat/ActionProposal';
+import TransactionSigning from '@/components/chat/TransactionSigning';
 
 const ChatInterface: React.FC = () => {
   const [currentInput, setCurrentInput] = useState('');
@@ -13,8 +15,6 @@ const ChatInterface: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-
-  console.log('ChatInterface auth state:', { isAuthenticated });
 
   const {
     sessions,
@@ -29,23 +29,28 @@ const ChatInterface: React.FC = () => {
     clearError,
     getCurrentMessages,
     getCurrentSession,
+    approveAction,
+    rejectAction,
+    signTransaction,
+    getCurrentPendingActions,
+    getCurrentPendingTransactions,
   } = useChat();
 
-
   const currentMessages = getCurrentMessages();
+  const pendingActions = getCurrentPendingActions();
+  const pendingTransactions = getCurrentPendingTransactions();
 
   // Load sessions on mount if authenticated
   useEffect(() => {
-    console.log('Auth state changed:', { isAuthenticated, currentSession });
     if (isAuthenticated) {
       loadSessions();
     }
-  }, [isAuthenticated, loadSessions, currentSession]);
+  }, [isAuthenticated, loadSessions]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     scrollToBottom();
-  }, [currentMessages]);
+  }, [currentMessages, pendingActions, pendingTransactions]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -58,14 +63,11 @@ const ChatInterface: React.FC = () => {
     setCurrentInput('');
 
     if (!isAuthenticated) {
-      // Mock response for unauthenticated users
-      // You could store this in local state if needed
       alert('Please connect your wallet to send messages');
       return;
     }
 
     if (!currentSession) {
-      // Auto-create session if none exists
       const newSession = await createSession();
       if (newSession) {
         await sendMessage(newSession.id, message);
@@ -98,13 +100,34 @@ const ChatInterface: React.FC = () => {
     await deleteSession(sessionId);
   };
 
+  const handleApproveAction = async (actionId: string, modifiedParams?: Record<string, any>) => {
+    if (!currentSession) return;
+    await approveAction(currentSession, actionId, modifiedParams);
+  };
+
+  const handleRejectAction = async (actionId: string) => {
+    if (!currentSession) return;
+    await rejectAction(currentSession, actionId);
+  };
+
+  const handleSignTransaction = async (transactionId: string, signedTransaction: string) => {
+    if (!currentSession) return;
+    await signTransaction(currentSession, transactionId, signedTransaction);
+  };
+
+  const handleRejectTransaction = async (transactionId: string) => {
+    if (!currentSession) return;
+    // Send a rejection message through the chat system
+    await sendMessage(currentSession, `Transaction ${transactionId} was rejected by user`);
+  };
+
   const currentSessionInfo = getCurrentSession();
 
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Header */}
       <ChatHeader />
- 
+
       {/* Error Banner */}
       {error && (
         <div className="bg-destructive/10 border-b border-destructive/20 px-4 py-3">
@@ -136,10 +159,9 @@ const ChatInterface: React.FC = () => {
       {/* Chat Container */}
       <div className="flex flex-1 overflow-hidden">
         {/* History Sidebar */}
-        <div className={`${
-          isHistoryOpen ? 'translate-x-0' : '-translate-x-full'
-        } fixed inset-y-0 left-0 z-50 w-80 bg-card border-r border-border transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 lg:flex lg:flex-col`}>
-        
+        <div className={`${isHistoryOpen ? 'translate-x-0' : '-translate-x-full'
+          } fixed inset-y-0 left-0 z-50 w-80 bg-card border-r border-border transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 lg:flex lg:flex-col`}>
+
           {/* Sidebar Header */}
           <div className="flex items-center justify-between p-4 border-b border-border">
             <h2 className="text-lg font-semibold text-foreground">Chat History</h2>
@@ -185,11 +207,10 @@ const ChatInterface: React.FC = () => {
               <div
                 key={session.id}
                 onClick={() => handleSwitchSession(session.id)}
-                className={`group flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
-                  currentSession === session.id 
-                    ? 'bg-secondary border border-border' 
+                className={`group flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${currentSession === session.id
+                    ? 'bg-secondary border border-border'
                     : 'hover:bg-secondary/50'
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <FiMessageCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
@@ -234,7 +255,7 @@ const ChatInterface: React.FC = () => {
 
           {/* Messages Area */}
           <div className="flex-1 overflow-y-auto">
-            {currentMessages.length === 0 ? (
+            {currentMessages.length === 0 && pendingActions.length === 0 && pendingTransactions.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center max-w-md mx-auto p-8">
                   <div className="w-16 h-16 mx-auto mb-4 bg-primary/10 rounded-full flex items-center justify-center">
@@ -244,54 +265,98 @@ const ChatInterface: React.FC = () => {
                     Start a new conversation
                   </h3>
                   <p className="text-muted-foreground">
-                    {isAuthenticated 
-                      ? "Send a message to begin your chat."
-                      : "Connect your wallet to start chatting."
+                    {isAuthenticated
+                      ? "Send a message to begin your chat. Try commands like 'What's my balance?' or 'Send 1 SOL to...'"
+                      : "Connect your wallet to start chatting and access Solana operations."
                     }
                   </p>
                 </div>
               </div>
             ) : (
               <div className="space-y-6 p-4 pb-32">
-      {currentMessages.map((message) => (
-        <div
-          key={message.id}
-          className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-        >
-          <div className={`max-w-[80%] md:max-w-[70%] ${
-            message.role === 'user'
-              ? 'bg-primary text-primary-foreground' 
-              : 'bg-secondary text-secondary-foreground'
-          } rounded-2xl px-4 py-3`}>
-            <div className="whitespace-pre-wrap break-words">
-              {message.content}
-            </div>
-            <div className={`text-xs mt-2 opacity-70 ${
-              message.role === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground'
-            }`}>
-              {new Date(message.created_at).toLocaleTimeString([], { 
-                hour: '2-digit', 
-                minute: '2-digit' 
-              })}
-            </div>
-          </div>
-        </div>
-      ))}
-      
-      {/* Show AI thinking indicator when sending */}
-      {loading.sending && (
-        <div className="flex justify-start">
-          <div className="bg-secondary text-secondary-foreground rounded-2xl px-4 py-3">
-            <div className="flex items-center gap-2">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-              <span className="text-sm">AI is thinking...</span>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      <div ref={messagesEndRef} />
-    </div>
+                {/* Regular Messages */}
+                {currentMessages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div className={`max-w-[80%] md:max-w-[70%] ${message.role === 'user'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary text-secondary-foreground'
+                      } rounded-2xl px-4 py-3`}>
+                      <div className="whitespace-pre-wrap break-words">
+                        {message.content}
+                      </div>
+                      <div className={`text-xs mt-2 opacity-70 ${message.role === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground'
+                        }`}>
+                        {new Date(message.created_at).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Pending Action Proposals */}
+                {pendingActions.map((action) => (
+                  <ActionProposal
+                    key={action.action_id}
+                    action={action}
+                    onApprove={handleApproveAction}
+                    onReject={handleRejectAction}
+                    loading={loading.processingAction}
+                  />
+                ))}
+
+                {/* Pending Transactions */}
+                {pendingTransactions.map((transaction) => (
+                  <TransactionSigning
+                    key={transaction.transaction_id}
+                    transaction={transaction}
+                    onSign={handleSignTransaction}
+                    onReject={handleRejectTransaction}
+                    loading={loading.signingTransaction}
+                  />
+                ))}
+
+                {/* Show AI thinking indicator when sending */}
+                {loading.sending && (
+                  <div className="flex justify-start">
+                    <div className="bg-secondary text-secondary-foreground rounded-2xl px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                        <span className="text-sm">AI is thinking...</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Show processing indicators */}
+                {loading.processingAction && (
+                  <div className="flex justify-start">
+                    <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-2xl px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-500"></div>
+                        <span className="text-sm text-yellow-700">Processing action...</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {loading.signingTransaction && (
+                  <div className="flex justify-start">
+                    <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                        <span className="text-sm text-blue-700">Submitting transaction...</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div ref={messagesEndRef} />
+              </div>
             )}
           </div>
 
@@ -305,8 +370,11 @@ const ChatInterface: React.FC = () => {
                     value={currentInput}
                     onChange={(e) => setCurrentInput(e.target.value)}
                     onKeyPress={handleKeyPress}
-                    placeholder="Type your message..."
-                    disabled={loading.sending}
+                    placeholder={isAuthenticated
+                      ? "Type your message... Try 'What's my balance?' or 'Send 1 SOL to...'"
+                      : "Connect your wallet to start chatting..."
+                    }
+                    disabled={loading.sending || !isAuthenticated}
                     className="w-full resize-none rounded-2xl border border-border bg-background px-4 py-3 pr-12 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent max-h-32 min-h-[3rem] disabled:opacity-50"
                     rows={1}
                     style={{
@@ -321,7 +389,7 @@ const ChatInterface: React.FC = () => {
                   />
                   <button
                     onClick={handleSend}
-                    disabled={!currentInput.trim() || loading.sending}
+                    disabled={!currentInput.trim() || loading.sending || !isAuthenticated}
                     className="absolute right-2 bottom-2 p-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                   >
                     <FiSend className="h-4 w-4" />
