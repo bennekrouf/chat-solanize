@@ -100,7 +100,7 @@ const ChatInterface: React.FC = () => {
     await deleteSession(sessionId);
   };
 
-  const handleApproveAction = async (actionId: string, modifiedParams?: Record<string, any>) => {
+  const handleApproveAction = async (actionId: string, modifiedParams?: Record<string, unknown>) => {
     if (!currentSession) return;
     await approveAction(currentSession, actionId, modifiedParams);
   };
@@ -208,8 +208,8 @@ const ChatInterface: React.FC = () => {
                 key={session.id}
                 onClick={() => handleSwitchSession(session.id)}
                 className={`group flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${currentSession === session.id
-                    ? 'bg-secondary border border-border'
-                    : 'hover:bg-secondary/50'
+                  ? 'bg-secondary border border-border'
+                  : 'hover:bg-secondary/50'
                   }`}
               >
                 <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -281,8 +281,8 @@ const ChatInterface: React.FC = () => {
                     className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
                     <div className={`max-w-[80%] md:max-w-[70%] ${message.role === 'user'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-secondary text-secondary-foreground'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-secondary text-secondary-foreground'
                       } rounded-2xl px-4 py-3`}>
                       <div className="whitespace-pre-wrap break-words">
                         {message.content}

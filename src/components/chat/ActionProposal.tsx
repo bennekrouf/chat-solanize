@@ -7,7 +7,7 @@ import { ProposedAction } from '@/lib/chatApi';
 
 interface ActionProposalProps {
   action: ProposedAction;
-  onApprove: (actionId: string, modifiedParams?: Record<string, any>) => void;
+  onApprove: (actionId: string, modifiedParams?: Record<string, unknown>) => void;
   onReject: (actionId: string) => void;
   loading?: boolean;
 }
@@ -18,7 +18,7 @@ const ActionProposal: React.FC<ActionProposalProps> = ({
   onReject,
   loading = false
 }) => {
-  const [modifiedParams, setModifiedParams] = useState<Record<string, any>>({});
+  const [modifiedParams, setModifiedParams] = useState<Record<string, unknown>>({});
 
   const getRiskColor = (level: string) => {
     switch (level) {

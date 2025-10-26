@@ -1,5 +1,4 @@
 // src/hooks/useChat.ts - Complete corrected version
-
 import { useState, useCallback, useMemo } from 'react';
 import { ChatApi, ChatApiError, type ChatSession, type ChatMessage, type ProposedAction, type PreparedTransaction } from '@/lib/chatApi';
 import { useAuth } from '@/contexts/AuthContext';
@@ -8,6 +7,14 @@ export interface ChatError {
   message: string;
   type: 'network' | 'auth' | 'validation' | 'unknown';
   retry?: () => void;
+}
+
+interface RequestBody {
+  content: string;
+  role: "user";
+  action_response?: unknown;
+  signed_transaction?: unknown;
+  [key: string]: unknown;
 }
 
 export interface UseChatState {
@@ -160,7 +167,7 @@ export const useChat = () => {
     action_response?: {
       action_id: string;
       approved: boolean;
-      modified_params?: Record<string, any>;
+      modified_params?: Record<string, unknown>;
     };
     signed_transaction?: string;
     transaction_id?: string;
@@ -191,7 +198,7 @@ export const useChat = () => {
     setError(null);
 
     try {
-      const requestBody: any = {
+      const requestBody: RequestBody = {
         content: message,
         role: 'user'
       };
@@ -275,7 +282,7 @@ export const useChat = () => {
   }, [chatApi, setLoading, setError, handleApiError]);
 
   // Handle action approval
-  const approveAction = useCallback(async (sessionId: string, actionId: string, modifiedParams?: Record<string, any>) => {
+  const approveAction = useCallback(async (sessionId: string, actionId: string, modifiedParams?: Record<string, unknown>) => {
     if (!sessionId || !actionId) return false;
 
     setLoading('processingAction', true);

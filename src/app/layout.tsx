@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Toaster } from "sonner";
 import "./globals.css";
+import PlausibleProvider from 'next-plausible'
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,13 +22,16 @@ export const metadata: Metadata = {
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: React.ReactNode
 }) {
   return (
-    <html suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {children}
+    <html lang="en">
+      <body className={`${geistSans.variable} ${geistMono.variable}`}>
+        <PlausibleProvider domain="app.ribh.io">
+          <Toaster />
+          {children}
+        </PlausibleProvider>
       </body>
     </html>
-  );
+  )
 }

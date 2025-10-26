@@ -15,7 +15,7 @@ export interface ProposedAction {
     endpoint: string;
     method: string;
     description: string;
-    params: Record<string, any>;
+    params: Record<string, unknown>;
     risk_level: 'low' | 'medium' | 'high';
   }>;
   estimated_cost: number;
@@ -39,7 +39,7 @@ export interface ActionResponse {
   action_response: {
     action_id: string;
     approved: boolean;
-    modified_params?: Record<string, any>;
+    modified_params?: Record<string, unknown>;
   };
 }
 
