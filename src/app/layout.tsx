@@ -27,7 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        <PlausibleProvider domain="app.ribh.io">
+        <PlausibleProvider domain={process.env.NEXT_PUBLIC_DOMAIN || "app.ribh.io"} trackOutboundLinks>
           <Toaster />
           {children}
         </PlausibleProvider>
