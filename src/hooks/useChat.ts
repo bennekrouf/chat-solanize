@@ -1,6 +1,6 @@
-// src/hooks/useChat.ts - Complete corrected version
+// src/hooks/useChat.ts
 import { useState, useCallback, useMemo } from 'react';
-import { ChatApi, ChatApiError, type ChatSession, type ChatMessage, type ProposedAction, type PreparedTransaction } from '@/lib/chatApi';
+import { ChatApi, ChatApiError, type ChatSession, type ChatMessage, type PreparedTransaction } from '@/lib/chatApi';
 import { useAuth } from '@/contexts/AuthContext';
 
 export interface ChatError {
@@ -9,27 +9,17 @@ export interface ChatError {
   retry?: () => void;
 }
 
-interface RequestBody {
-  content: string;
-  role: "user";
-  action_response?: unknown;
-  signed_transaction?: unknown;
-  [key: string]: unknown;
-}
-
 export interface UseChatState {
   sessions: ChatSession[];
   currentSession: string | null;
   messages: Record<string, ChatMessage[]>;
   optimisticMessages: Record<string, ChatMessage[]>;
-  pendingActions: Record<string, ProposedAction>;
   pendingTransactions: Record<string, PreparedTransaction>;
   loading: {
     sessions: boolean;
     messages: boolean;
     sending: boolean;
     creating: boolean;
-    processingAction: boolean;
     signingTransaction: boolean;
   };
   error: ChatError | null;
@@ -43,14 +33,12 @@ export const useChat = () => {
     currentSession: null,
     messages: {},
     optimisticMessages: {},
-    pendingActions: {},
     pendingTransactions: {},
     loading: {
       sessions: false,
       messages: false,
       sending: false,
       creating: false,
-      processingAction: false,
       signingTransaction: false,
     },
     error: null,
@@ -162,13 +150,8 @@ export const useChat = () => {
     }
   }, [isAuthenticated, chatApi, setLoading, setError, handleApiError]);
 
-  // Send message - handles all message types
+  // Send message - handles regular messages and signed transaction submission
   const sendMessage = useCallback(async (sessionId: string, content: string, options?: {
-    action_response?: {
-      action_id: string;
-      approved: boolean;
-      modified_params?: Record<string, unknown>;
-    };
     signed_transaction?: string;
     transaction_id?: string;
   }) => {
@@ -176,8 +159,8 @@ export const useChat = () => {
 
     const message = content.trim();
 
-    // Create optimistic user message immediately (only for regular messages)
-    if (!options?.action_response && !options?.signed_transaction) {
+    // Create optimistic user message for regular messages (not tx submissions)
+    if (!options?.signed_transaction) {
       const optimisticUserMessage: ChatMessage = {
         id: `temp-user-${Date.now()}`,
         content: message,
@@ -198,23 +181,17 @@ export const useChat = () => {
     setError(null);
 
     try {
-      const requestBody: RequestBody = {
+      const requestBody = {
         content: message,
-        role: 'user'
+        role: 'user' as const,
+        ...(options?.signed_transaction && {
+          signed_transaction: options.signed_transaction,
+          transaction_id: options.transaction_id,
+        }),
       };
-
-      // Add optional fields
-      if (options?.action_response) {
-        requestBody.action_response = options.action_response;
-      }
-      if (options?.signed_transaction) {
-        requestBody.signed_transaction = options.signed_transaction;
-        requestBody.transaction_id = options.transaction_id;
-      }
 
       const response = await chatApi.sendMessage(sessionId, requestBody);
 
-      // Success: Add real messages and handle new response structure
       setState(prev => ({
         ...prev,
         messages: {
@@ -237,12 +214,8 @@ export const useChat = () => {
         },
         optimisticMessages: {
           ...prev.optimisticMessages,
-          [sessionId]: [] // Clear optimistic messages
+          [sessionId]: []
         },
-        // Handle pending actions and transactions
-        pendingActions: response.proposed_actions
-          ? { ...prev.pendingActions, [response.proposed_actions.action_id]: response.proposed_actions }
-          : prev.pendingActions,
         pendingTransactions: response.prepared_transaction
           ? { ...prev.pendingTransactions, [response.prepared_transaction.transaction_id]: response.prepared_transaction }
           : prev.pendingTransactions,
@@ -255,8 +228,7 @@ export const useChat = () => {
 
       return true;
     } catch (error) {
-      // Create error message as AI response for regular messages
-      if (!options?.action_response && !options?.signed_transaction) {
+      if (!options?.signed_transaction) {
         const errorMessage: ChatMessage = {
           id: `temp-error-${Date.now()}`,
           content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
@@ -280,69 +252,6 @@ export const useChat = () => {
       setLoading('sending', false);
     }
   }, [chatApi, setLoading, setError, handleApiError]);
-
-  // Handle action approval
-  const approveAction = useCallback(async (sessionId: string, actionId: string, modifiedParams?: Record<string, unknown>) => {
-    if (!sessionId || !actionId) return false;
-
-    setLoading('processingAction', true);
-    setError(null);
-
-    try {
-      const success = await sendMessage(sessionId, "User approved actions", {
-        action_response: {
-          action_id: actionId,
-          approved: true,
-          modified_params: modifiedParams
-        }
-      });
-
-      if (success) {
-        // Remove the approved action from pending
-        setState(prev => {
-          const newPendingActions = { ...prev.pendingActions };
-          delete newPendingActions[actionId];
-          return { ...prev, pendingActions: newPendingActions };
-        });
-      }
-
-      return success;
-    } catch (error) {
-      const chatError = handleApiError(error, 'approve action');
-      setError(chatError);
-      return false;
-    } finally {
-      setLoading('processingAction', false);
-    }
-  }, [sendMessage, setLoading, setError, handleApiError]);
-
-  // Handle action rejection
-  const rejectAction = useCallback(async (sessionId: string, actionId: string) => {
-    if (!sessionId || !actionId) return false;
-
-    try {
-      const success = await sendMessage(sessionId, "User rejected the proposed actions", {
-        action_response: {
-          action_id: actionId,
-          approved: false
-        }
-      });
-
-      if (success) {
-        // Remove the rejected action from pending
-        setState(prev => {
-          const newPendingActions = { ...prev.pendingActions };
-          delete newPendingActions[actionId];
-          return { ...prev, pendingActions: newPendingActions };
-        });
-      }
-
-      return success;
-    } catch (error) {
-      console.error('Failed to reject action:', error);
-      return false;
-    }
-  }, [sendMessage]);
 
   // Handle transaction signing
   const signTransaction = useCallback(async (sessionId: string, transactionId: string, signedTransaction: string) => {
@@ -435,12 +344,6 @@ export const useChat = () => {
     return state.sessions.find(s => s.id === state.currentSession) || null;
   }, [state.currentSession, state.sessions]);
 
-  // Get pending items for current session
-  const getCurrentPendingActions = useCallback(() => {
-    if (!state.currentSession) return [];
-    return Object.values(state.pendingActions);
-  }, [state.currentSession, state.pendingActions]);
-
   const getCurrentPendingTransactions = useCallback(() => {
     if (!state.currentSession) return [];
     return Object.values(state.pendingTransactions);
@@ -462,15 +365,12 @@ export const useChat = () => {
     switchToSession,
     clearError,
 
-    // New action/transaction handling
-    approveAction,
-    rejectAction,
+    // Transaction signing
     signTransaction,
 
     // Computed values
     getCurrentMessages,
     getCurrentSession,
-    getCurrentPendingActions,
     getCurrentPendingTransactions,
 
     // Utilities

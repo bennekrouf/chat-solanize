@@ -6,7 +6,6 @@ import { useTheme } from 'next-themes';
 import WalletButton from '@/components/wallet/WalletButton';
 import { useChat } from '@/hooks/useChat';
 import { useAuth } from '@/contexts/AuthContext';
-import ActionProposal from '@/components/chat/ActionProposal';
 import TransactionSigning from '@/components/chat/TransactionSigning';
 
 const ChatInterface: React.FC = () => {
@@ -29,15 +28,11 @@ const ChatInterface: React.FC = () => {
     clearError,
     getCurrentMessages,
     getCurrentSession,
-    approveAction,
-    rejectAction,
     signTransaction,
-    getCurrentPendingActions,
     getCurrentPendingTransactions,
   } = useChat();
 
   const currentMessages = getCurrentMessages();
-  const pendingActions = getCurrentPendingActions();
   const pendingTransactions = getCurrentPendingTransactions();
 
   // Load sessions on mount if authenticated
@@ -50,7 +45,7 @@ const ChatInterface: React.FC = () => {
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     scrollToBottom();
-  }, [currentMessages, pendingActions, pendingTransactions]);
+  }, [currentMessages, pendingTransactions]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -98,16 +93,6 @@ const ChatInterface: React.FC = () => {
     e.stopPropagation();
     if (sessions.length <= 1) return;
     await deleteSession(sessionId);
-  };
-
-  const handleApproveAction = async (actionId: string, modifiedParams?: Record<string, unknown>) => {
-    if (!currentSession) return;
-    await approveAction(currentSession, actionId, modifiedParams);
-  };
-
-  const handleRejectAction = async (actionId: string) => {
-    if (!currentSession) return;
-    await rejectAction(currentSession, actionId);
   };
 
   const handleSignTransaction = async (transactionId: string, signedTransaction: string) => {
@@ -255,7 +240,7 @@ const ChatInterface: React.FC = () => {
 
           {/* Messages Area */}
           <div className="flex-1 overflow-y-auto">
-            {currentMessages.length === 0 && pendingActions.length === 0 && pendingTransactions.length === 0 ? (
+            {currentMessages.length === 0 && pendingTransactions.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center max-w-md mx-auto p-8">
                   <div className="w-16 h-16 mx-auto mb-4 bg-primary/10 rounded-full flex items-center justify-center">
@@ -298,17 +283,6 @@ const ChatInterface: React.FC = () => {
                   </div>
                 ))}
 
-                {/* Pending Action Proposals */}
-                {pendingActions.map((action) => (
-                  <ActionProposal
-                    key={action.action_id}
-                    action={action}
-                    onApprove={handleApproveAction}
-                    onReject={handleRejectAction}
-                    loading={loading.processingAction}
-                  />
-                ))}
-
                 {/* Pending Transactions */}
                 {pendingTransactions.map((transaction) => (
                   <TransactionSigning
@@ -327,18 +301,6 @@ const ChatInterface: React.FC = () => {
                       <div className="flex items-center gap-2">
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
                         <span className="text-sm">AI is thinking...</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Show processing indicators */}
-                {loading.processingAction && (
-                  <div className="flex justify-start">
-                    <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-2xl px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-500"></div>
-                        <span className="text-sm text-yellow-700">Processing action...</span>
                       </div>
                     </div>
                   </div>

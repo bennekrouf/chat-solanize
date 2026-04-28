@@ -7,21 +7,6 @@ export interface ChatMessage {
   created_at: string;
 }
 
-export interface ProposedAction {
-  action_id: string;
-  intent_description: string;
-  confidence_score: number;
-  endpoints_to_call: Array<{
-    endpoint: string;
-    method: string;
-    description: string;
-    params: Record<string, unknown>;
-    risk_level: 'low' | 'medium' | 'high';
-  }>;
-  estimated_cost: number;
-  warnings: string[];
-}
-
 export interface PreparedTransaction {
   transaction_id: string;
   transaction_type: string;
@@ -31,22 +16,6 @@ export interface PreparedTransaction {
   amount?: number;
   token?: string;
   fee_estimate: number;
-}
-
-
-export interface ActionResponse {
-  content: string;
-  action_response: {
-    action_id: string;
-    approved: boolean;
-    modified_params?: Record<string, unknown>;
-  };
-}
-
-export interface TransactionResponse {
-  content: string;
-  signed_transaction: string;
-  transaction_id: string;
 }
 
 export interface ChatSession {
@@ -59,12 +28,13 @@ export interface ChatSession {
 export interface SendMessageRequest {
   content: string;
   role: 'user';
+  signed_transaction?: string;
+  transaction_id?: string;
 }
 
 export interface SendMessageResponse {
   user_message: ChatMessage;
   ai_message: ChatMessage;
-  proposed_actions: ProposedAction | null;
   prepared_transaction: PreparedTransaction | null;
 }
 

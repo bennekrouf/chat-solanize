@@ -9,8 +9,9 @@ export async function POST(request: NextRequest) {
     // - Send email via SendGrid, Resend, etc.
     // - Save to database
     // - Integrate with CRM
-    
-    console.log('Contact form submission:', body);
+
+    // M4 — Do not log the full body (may contain PII: name, email, message)
+    console.log('Contact form submission received');
     
     return NextResponse.json(
       { message: 'Message sent successfully' },
