@@ -69,11 +69,7 @@ PM2=$(which pm2)
 sudo -u "$DEPLOY_USER" HOME="/home/$DEPLOY_USER" \
   $PM2 restart "$PM2_NAME" || \
   sudo -u "$DEPLOY_USER" HOME="/home/$DEPLOY_USER" \
-    $PM2 start yarn \
-      --name "$PM2_NAME" \
-      --cwd "$SERVICE_SRC" \
-      --env "PORT=$PORT" \
-      -- start
+    $PM2 start "$SRC_DIR/ecosystem.config.js" --only "$PM2_NAME"
 
 sudo -u "$DEPLOY_USER" HOME="/home/$DEPLOY_USER" $PM2 save
 log "$PM2_NAME restarted"
