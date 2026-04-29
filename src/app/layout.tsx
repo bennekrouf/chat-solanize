@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "My App",
-  description: "Built with the complete app scaffold",
+  title: "Solanize — Solana AI Assistant",
+  description: "Chat with your Solana wallet. Check balances, swap tokens, and send SOL — all through natural conversation.",
 };
 
 export default function RootLayout({
@@ -27,7 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        <PlausibleProvider domain={process.env.NEXT_PUBLIC_DOMAIN || "app.ribh.io"} trackOutboundLinks>
+        <PlausibleProvider domain={process.env.NEXT_PUBLIC_DOMAIN || "solanize.ai"} trackOutboundLinks>
           <Toaster />
           {children}
         </PlausibleProvider>
