@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletReadyState } from '@solana/wallet-adapter-base';
 import { useAuth } from '@/contexts/AuthContext';
-import { FiCreditCard, FiChevronDown, FiLogOut, FiCopy, FiCheck } from 'react-icons/fi';
+import { FiCreditCard, FiChevronDown, FiLogOut, FiCopy, FiCheck, FiLink } from 'react-icons/fi';
 
 // Human-readable label for each auth stage
 const STAGE_LABEL: Record<string, string> = {
@@ -21,10 +21,41 @@ const WalletButton: React.FC = () => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [linkCode, setLinkCode] = useState<string | null>(null);
+  const [linkBusy, setLinkBusy] = useState(false);
   const [mounted, setMounted] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setMounted(true); }, []);
+
+  /**
+   * Ask for a code that links this wallet to an api0 account.
+   *
+   * Minted here rather than in Claude because this is the only place the person
+   * has proved they hold the wallet — they signed a challenge to get in. Claude
+   * proves the other half: which api0 account is asking.
+   */
+  const handleLink = useCallback(async () => {
+    setLinkBusy(true);
+    setLinkCode(null);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:5000'}/api/v1/link/code`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
+      });
+      if (!res.ok) throw new Error('Could not get a code');
+      const body = await res.json();
+      setLinkCode(body.code);
+    } catch {
+      setLinkCode(null);
+    } finally {
+      setLinkBusy(false);
+    }
+  }, []);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -85,6 +116,25 @@ const WalletButton: React.FC = () => {
               {copied ? <FiCheck className="h-4 w-4 text-green-500" /> : <FiCopy className="h-4 w-4" />}
               {copied ? 'Copied!' : 'Copy address'}
             </button>
+            <button
+              onClick={handleLink}
+              disabled={linkBusy}
+              className="w-full flex items-center gap-2 px-3 py-2 hover:bg-secondary transition-colors"
+            >
+              <FiLink className="h-4 w-4" />
+              {linkBusy ? 'Getting a code...' : 'Link to Claude'}
+            </button>
+            {linkCode && (
+              <div className="px-3 py-2 border-t border-border">
+                <div className="font-mono text-lg tracking-widest text-center py-1">
+                  {linkCode}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  In Claude, ask to link your account with this code. It expires in
+                  10 minutes.
+                </p>
+              </div>
+            )}
             <button
               onClick={() => { setShowDropdown(false); logout(); }}
               className="w-full flex items-center gap-2 px-3 py-2 hover:bg-secondary transition-colors text-red-500"
